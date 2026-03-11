@@ -1,0 +1,35 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "mcpforge"
+version = "0.1.0"
+description = "Spawn MCP servers from declarative YAML configuration"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.11"
+authors = [
+    { name = "Mihai Ciprian Chezan" },
+]
+dependencies = [
+    "fastmcp>=3.0",
+    "pydantic>=2.0",
+    "typer>=0.9",
+    "pyyaml>=6.0",
+    "rich>=13.0",
+    "anyio>=4.0",
+]
+
+[project.scripts]
+mcp-forge = "mcpforge.cli:app"
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pytest-asyncio>=0.21",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]

@@ -1,0 +1,45 @@
+forge:
+  name: "media-tools"
+  version: "1.0.0"
+  description: "Media processing tools (ffmpeg/ffprobe) for AI agents"
+
+server:
+  transport: stdio
+
+tools:
+  - name: convert_video
+    description: "Convert a video file to a different format using ffmpeg"
+    adapter: cli
+    cli:
+      command: ffmpeg
+      subcommand: ["-y"]
+      timeout_seconds: 300
+    args:
+      - name: input_file
+        type: string
+        description: "Path to input video file"
+        required: true
+        flag: "-i"
+      - name: output_file
+        type: string
+        description: "Path to output video file"
+        required: true
+        positional: true
+    output:
+      type: stderr  # ffmpeg writes progress to stderr
+
+  - name: get_video_info
+    description: "Get video file information using ffprobe"
+    adapter: cli
+    cli:
+      command: ffprobe
+      subcommand: ["-v", "quiet", "-print_format", "json", "-show_format", "-show_streams"]
+      timeout_seconds: 30
+    args:
+      - name: input_file
+        type: string
+        description: "Path to video file"
+        required: true
+        positional: true
+    output:
+      type: stdout

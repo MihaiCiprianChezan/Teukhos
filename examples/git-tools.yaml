@@ -1,0 +1,63 @@
+forge:
+  name: "git-tools"
+  version: "1.0.0"
+  description: "Git repository tools for AI agents"
+
+server:
+  transport: stdio
+
+tools:
+  - name: git_log
+    description: "Show recent git commits"
+    adapter: cli
+    cli:
+      command: git
+      subcommand: [log, --oneline]
+    args:
+      - name: count
+        type: integer
+        description: "Number of commits to show"
+        required: false
+        flag: "-n"
+        default: 10
+    output:
+      type: stdout
+
+  - name: git_status
+    description: "Show working tree status"
+    adapter: cli
+    cli:
+      command: git
+      subcommand: [status, --short]
+    output:
+      type: stdout
+
+  - name: git_diff
+    description: "Show diff of current changes"
+    adapter: cli
+    cli:
+      command: git
+      subcommand: [diff]
+    args:
+      - name: staged
+        type: boolean
+        description: "Show staged changes only"
+        required: false
+        flag: "--staged"
+    output:
+      type: stdout
+
+  - name: git_branch
+    description: "List git branches"
+    adapter: cli
+    cli:
+      command: git
+      subcommand: [branch]
+    args:
+      - name: all
+        type: boolean
+        description: "Show remote branches too"
+        required: false
+        flag: "--all"
+    output:
+      type: stdout

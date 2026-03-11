@@ -1,0 +1,73 @@
+forge:
+  name: "dev-tools"
+  version: "1.0.0"
+  description: "Developer and system tools for AI agents"
+
+server:
+  transport: stdio
+
+tools:
+  - name: list_processes
+    description: "List running processes"
+    adapter: cli
+    cli:
+      command: ps
+      subcommand: [aux]
+      timeout_seconds: 10
+    output:
+      type: stdout
+
+  - name: disk_usage
+    description: "Show disk usage for a path"
+    adapter: cli
+    cli:
+      command: du
+      subcommand: ["-sh"]
+      timeout_seconds: 10
+    args:
+      - name: path
+        type: string
+        description: "Path to check disk usage for"
+        required: false
+        positional: true
+        default: "."
+    output:
+      type: stdout
+
+  - name: ping_host
+    description: "Ping a host to check connectivity"
+    adapter: cli
+    cli:
+      command: ping
+      subcommand: ["-c", "3"]
+      timeout_seconds: 15
+    args:
+      - name: host
+        type: string
+        description: "Hostname or IP to ping"
+        required: true
+        positional: true
+    output:
+      type: exit_code
+      exit_codes:
+        0: "Host is reachable"
+        1: "Host is unreachable"
+        2: "Network error or unknown host"
+
+  # WARNING: This tool executes arbitrary shell commands.
+  # Only use locally — NEVER expose remotely without authentication.
+  - name: run_command
+    description: "Run an arbitrary shell command (local use only — do not expose remotely without auth)"
+    adapter: cli
+    cli:
+      command: bash
+      subcommand: ["-c"]
+      timeout_seconds: 30
+    args:
+      - name: command
+        type: string
+        description: "Shell command to execute"
+        required: true
+        positional: true
+    output:
+      type: stdout

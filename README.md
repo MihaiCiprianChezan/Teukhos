@@ -1,5 +1,5 @@
-# MCPForge — Architecture & Feature Spec v0.1
-**"Spawn production-grade MCP servers from config"**
+# MCPForge — Architecture & Feature Spec v0.2
+**Spawn production-grade MCP servers from config**
 
 ---
 
@@ -15,7 +15,7 @@ The MCP ecosystem has a critical gap:
 | Visual builders (Langflow, n8n) | **CI/CD-native, GitOps-friendly runtime** |
 | `fastmcp.json` (still needs server.py) | **Truly zero-code for CLI tool wrapping** |
 
-**MCPForge** fills this gap: a single binary + embedded web UI that reads a declarative YAML spec and spawns a production-ready MCP server at runtime — locally, in CI/CD, or as a hosted remote endpoint.
+**MCPForge** fills this gap: a single binary + gorgeous embedded web UI that reads a declarative YAML spec and spawns a production-ready MCP server at runtime — locally, in CI/CD, or as a hosted remote endpoint.
 
 ---
 
@@ -27,422 +27,745 @@ The MCP ecosystem has a critical gap:
 │                                                                  │
 │  mcp-forge.yaml ──► [Engine] ──► MCP Server (stdio | http | sse)│
 │                        │                                         │
-│                    [Web UI]  ──► visual config + live metrics    │
+│                  [Beautiful UI] ──► visual config + live metrics │
 │                        │                                         │
 │                    [Registry] ──► publish / discover / reuse     │
 └──────────────────────────────────────────────────────────────────┘
 ```
 
-**Target users:**
-- Embedded/automotive/enterprise engineers who have CLI tools and want agent integration **now**
-- DevOps engineers who want MCP servers in CI/CD pipelines
-- Platform teams who want to govern, monitor and expose internal tools as MCP endpoints
-- Researchers who want to wrap scripts as AI-callable tools without writing servers
+**Target users — the whole world, not a niche:**
+- Any developer who has a CLI tool and wants to make it agent-callable in minutes
+- Indie hackers and open-source authors who want to expose their tools to AI workflows
+- DevOps engineers running agentic CI/CD pipelines
+- Platform teams building internal AI tooling
+- Researchers wrapping scripts and datasets as MCP tools
+- Literally anyone with a terminal command and an idea
 
 **Positioning:** *"If FastMCP is Flask, MCPForge is Heroku for MCP servers"*
 
 ---
 
-## 2. Core Architecture
+## 2. UI Design Philosophy — NON-NEGOTIABLE
 
-### 2.1 Component Map
+> **Beautiful first. Always. No exceptions.**
 
-```
-mcpforge/
-├── engine/           # Core: config parser + FastMCP server generator
-├── ui/               # Embedded lightweight web UI (served by the engine)
-├── gateway/          # Auth, rate-limiting, routing layer
-├── registry/         # Tool catalog, versioning, sharing
-├── adapters/         # CLI, REST API, Python fn, OpenAPI adapters
-├── observability/    # Metrics, logs, traces
-└── cli/              # `mcp-forge` command line interface
-```
+The embedded UI is not a dashboard bolted on as an afterthought. It IS the product for many users. It needs to be the kind of UI that people screenshot and post on Twitter saying "wait this is actually gorgeous."
 
-### 2.2 Runtime Modes
+### Design Principles
 
-| Mode | Use Case | Transport |
-|---|---|---|
-| `mcp-forge serve` | Local dev / Claude Desktop | stdio |
-| `mcp-forge serve --http` | CI/CD, agentic pipelines | HTTP / SSE |
-| `mcp-forge serve --remote` | Hosted public endpoint | HTTPS + OAuth |
-| `mcp-forge run --once` | Single-shot execution | stdio |
-| `mcp-forge validate` | CI linting, no server spawn | — |
+**1. Visually stunning, not "functional-ugly"**
+This is not Traefik dashboard. This is not Grafana default theme. This is not "Bootstrap gray."
+The UI should feel like a premium developer tool — think Linear, Vercel, Raycast, Oxide Console, Warp terminal. Dark by default, with a light theme option. Every pixel intentional.
+
+**2. Glassmorphism + depth**
+Frosted glass panels, subtle gradients, layered z-depth. Tool cards float. Panels breathe. Not garish — refined. The kind of dark theme that makes engineers say "oh" when they first open it.
+
+**3. Micro-interactions everywhere**
+- Tool call animations (a pulse ripples from the tool card when it's invoked)
+- Arg validation inline (green tick / red shake as you type)
+- Live metrics that animate smoothly (not hard number jumps)
+- Hover states that reveal context without cluttering the base UI
+- "Test Tool" panel slides in from the right like a drawer
+
+**4. Typography with character**
+Not Inter. Not Roboto. Something with personality — perhaps `Geist Mono` for code, `Cal Sans` or `Syne` for headings. Clear hierarchy. Monospace for YAML/config that actually looks beautiful.
+
+**5. Real-time feels alive**
+Connection status pulses. Live call rates update in real time. The server status indicator in the corner breathes (subtle CSS animation). When a tool is called, you see it happen.
+
+**6. The YAML ↔ UI sync is the magic moment**
+When someone edits in the visual builder and watches the YAML update live in the split pane — that's the moment. It should be smooth, instant, satisfying. Same in reverse: paste YAML, watch the form populate.
 
 ---
 
-## 3. The Config Format — `mcp-forge.yaml`
+## 3. Use Cases — Universal, Not Niche
 
-This is the heart of MCPForge. Everything expressible in the UI is serializable to this file.
+MCPForge is for **anything with a CLI, API, or script**. Here are real-world examples across completely different domains:
+
+### Example A: Media & Creative Tools
 
 ```yaml
-# mcp-forge.yaml — the complete declarative spec
-
 forge:
-  name: "compliance-checker"
-  version: "1.2.0"
-  description: "MISRA-C and AUTOSAR compliance tools for embedded CI pipelines"
-  tags: [automotive, compliance, embedded, bosch]
-
-server:
-  transport: http          # stdio | http | sse | all
-  port: 8765
-  host: "0.0.0.0"
-  path_prefix: "/mcp"
-  health_check: true       # GET /health endpoint for CI readiness probes
-  cors:
-    enabled: true
-    origins: ["http://localhost:*"]
-
-auth:
-  mode: api_key            # none | api_key | oauth2 | jwt | mtls
-  api_keys:
-    - key: "${FORGE_API_KEY}"
-      label: "ci-pipeline-key"
-      scopes: [read, execute]
-  # oauth2:
-  #   provider: "https://auth.bosch.com"
-  #   client_id: "${OAUTH_CLIENT_ID}"
+  name: "creative-studio"
+  description: "Wrap ffmpeg, ImageMagick, and yt-dlp as agent tools"
 
 tools:
-  - name: check_file
-    description: "Run MISRA-C compliance check on a single C source file"
+  - name: convert_video
+    description: "Convert any video file to a target format with optional compression"
     adapter: cli
     cli:
-      command: "compliance-tool"
-      subcommand: "check"
-      timeout_seconds: 30
-      working_dir: "${PROJECT_ROOT}"
+      command: "ffmpeg"
+      timeout_seconds: 300
+    args:
+      - name: input_file
+        type: string
+        required: true
+        flag: "-i"
+      - name: output_file
+        type: string
+        required: true
+        positional: true
+      - name: quality
+        type: integer
+        default: 23
+        flag: "-crf"
+        description: "CRF quality (0=lossless, 51=worst). 23 is default."
+    output:
+      type: exit_code
+      success: [0]
+
+  - name: resize_image
+    description: "Resize an image to specific dimensions"
+    adapter: cli
+    cli:
+      command: "magick"
+    args:
+      - name: input
+        type: string
+        required: true
+        positional: 0
+      - name: width
+        type: integer
+        required: true
+      - name: height
+        type: integer
+        required: true
+        template: "-resize {width}x{height}"
+      - name: output
+        type: string
+        required: true
+        positional: 1
+    output:
+      type: exit_code
+
+  - name: download_video
+    description: "Download a video from YouTube, TikTok, Twitter, or 1000+ other sites"
+    adapter: cli
+    cli:
+      command: "yt-dlp"
+      timeout_seconds: 600
+    args:
+      - name: url
+        type: string
+        required: true
+        positional: true
+      - name: format
+        type: string
+        default: "best"
+        flag: "-f"
+      - name: output_template
+        type: string
+        default: "%(title)s.%(ext)s"
+        flag: "-o"
+    output:
+      type: stdout
+      streaming: true
+```
+
+---
+
+### Example B: System & Infrastructure Tools (Windows, Linux, macOS)
+
+```yaml
+forge:
+  name: "sysops-toolkit"
+  description: "System administration tools as agent-callable MCP tools"
+
+tools:
+  - name: disk_usage
+    description: "Get disk usage for a path or drive"
+    adapter: shell
+    shell:
+      # Cross-platform via conditional
+      command: "du -sh {path} 2>/dev/null || dir {path}"
+    args:
+      - name: path
+        type: string
+        default: "."
+        description: "Directory path to analyze"
+    output:
+      type: stdout
+      format: text
+
+  - name: list_processes
+    description: "List running processes, optionally filtered by name"
+    adapter: cli
+    cli:
+      command: "ps"
+      args_template: "aux"
+    args:
+      - name: filter
+        type: string
+        required: false
+        description: "Optional process name filter"
+    output:
+      type: stdout
+      post_process:
+        jq_like: "filter by args.filter if present"
+
+  - name: ping_host
+    description: "Check if a host is reachable"
+    adapter: cli
+    cli:
+      command: "ping"
+      timeout_seconds: 10
+    args:
+      - name: host
+        type: string
+        required: true
+        positional: true
+      - name: count
+        type: integer
+        default: 4
+        flag: "-c"
+    output:
+      type: exit_code
+      success: [0]
+      map:
+        1: "Host unreachable"
+        2: "Network error"
+
+  - name: run_powershell
+    description: "Execute a PowerShell command (Windows)"
+    adapter: cli
+    cli:
+      command: "powershell.exe"
+      args_template: "-NonInteractive -Command"
+    args:
+      - name: script
+        type: string
+        required: true
+        positional: true
+    output:
+      type: stdout
+```
+
+---
+
+### Example C: Data Science & AI Tools
+
+```yaml
+forge:
+  name: "data-toolkit"
+  description: "Python data science scripts exposed as MCP tools"
+
+tools:
+  - name: analyze_csv
+    description: "Run statistical analysis on a CSV file, return summary as JSON"
+    adapter: python
+    python:
+      module: "tools.analysis"
+      function: "analyze"
     args:
       - name: file_path
         type: string
         required: true
-        flag: "--file"
-        description: "Absolute path to the .c file to check"
-      - name: ruleset
-        type: string
-        default: "MISRA-C:2012"
-        enum: ["MISRA-C:2004", "MISRA-C:2012", "AUTOSAR-C++14"]
-        flag: "--ruleset"
-      - name: fail_on_warning
-        type: boolean
-        default: false
-        flag: "--strict"
+      - name: columns
+        type: array
+        items: string
+        required: false
+        description: "Specific columns to analyze. Defaults to all."
     output:
-      type: stdout           # stdout | stderr | json_field | exit_code | file
-      format: text           # text | json | xml | markdown
-      on_error: stderr       # where to find error details
+      type: json
 
-  - name: batch_check
-    description: "Check all C files in a directory recursively"
+  - name: run_notebook
+    description: "Execute a Jupyter notebook and return output"
     adapter: cli
     cli:
-      command: "compliance-tool"
-      subcommand: "batch"
-      timeout_seconds: 120
+      command: "jupyter"
+      subcommand: "nbconvert"
+      args_template: "--to notebook --execute {input} --output {output}"
+      timeout_seconds: 600
     args:
-      - name: directory
+      - name: input
         type: string
         required: true
-        flag: "--dir"
-      - name: output_format
+        description: "Path to .ipynb file"
+      - name: output
         type: string
-        default: "json"
-        enum: ["json", "html", "sarif"]   # SARIF = GitHub code scanning format!
-        flag: "--format"
-    output:
-      type: json_field
-      field: "results"
-      on_error: json_field:error
-
-  - name: generate_report
-    description: "Generate HTML compliance report from last scan results"
-    adapter: cli
-    cli:
-      command: "compliance-tool"
-      subcommand: "report"
-    args:
-      - name: output_dir
-        type: string
-        required: true
-        flag: "--out"
+        default: "output.ipynb"
     output:
       type: file
-      path_field: "report_path"   # tool returns JSON with this field pointing to the file
+      path_field: output
 
-  # REST API adapter example
-  - name: lookup_rule
-    description: "Look up MISRA rule details from the internal knowledge base"
-    adapter: rest
-    rest:
-      base_url: "https://internal-kb.bosch.net/api"
-      endpoint: "/misra/rules/{rule_id}"
-      method: GET
-      auth_header: "Authorization: Bearer ${KB_TOKEN}"
+  - name: query_duckdb
+    description: "Run a SQL query against any local Parquet or CSV file using DuckDB"
+    adapter: cli
+    cli:
+      command: "duckdb"
+      args_template: ":memory: -c \"{query}\""
     args:
-      - name: rule_id
+      - name: query
         type: string
         required: true
-        path_param: rule_id
-
-  # Python function adapter example
-  - name: parse_sarif
-    description: "Parse a SARIF file and return structured violation summary"
-    adapter: python
-    python:
-      module: "forge_tools.sarif_parser"
-      function: "parse_and_summarize"
-    args:
-      - name: sarif_path
-        type: string
-        required: true
-
-resources:
-  - name: ruleset_docs
-    description: "MISRA-C 2012 rule reference documentation"
-    uri: "file://${PROJECT_ROOT}/docs/misra-c-2012.md"
-    mime_type: "text/markdown"
-
-  - name: last_scan_results
-    description: "Results from the most recent compliance scan"
-    uri: "file://${PROJECT_ROOT}/.forge/last-scan.json"
-    mime_type: "application/json"
-    volatile: true    # tells clients this changes frequently
-
-prompts:
-  - name: review_violations
-    description: "Standard prompt template for reviewing compliance violations"
-    template: |
-      You are a senior embedded systems engineer reviewing MISRA-C compliance results.
-      Analyze the following violations and provide:
-      1. Severity assessment for each
-      2. Recommended fix approach
-      3. Whether any can be justified/suppressed
-      
-      Results: {{results}}
-
-env:
-  PROJECT_ROOT: "${PWD}"
-  COMPLIANCE_LICENSE: "${COMPLIANCE_LICENSE_KEY}"
-  # Secrets are never logged or exposed via UI
-
-rate_limiting:
-  enabled: true
-  requests_per_minute: 60
-  burst: 10
-
-logging:
-  level: INFO              # DEBUG | INFO | WARN | ERROR
-  format: json             # text | json
-  output: stdout           # stdout | file | both
-  file: ".forge/forge.log"
-  include_tool_args: false  # IMPORTANT: false for security (no secrets in logs)
-  include_tool_output: false
+        description: "SQL query. Use read_parquet('file.parquet') or read_csv('file.csv')"
+    output:
+      type: stdout
+      format: text
 ```
 
 ---
 
-## 4. Engine — Core Processing Pipeline
+### Example D: Developer Productivity
+
+```yaml
+forge:
+  name: "dev-tools"
+  description: "Git, npm, Docker and project tools as agent-callable MCP server"
+
+tools:
+  - name: git_log
+    description: "Get recent git commit history"
+    adapter: cli
+    cli:
+      command: "git"
+      subcommand: "log"
+      args_template: "--oneline -n {count} --format='{format}'"
+    args:
+      - name: count
+        type: integer
+        default: 20
+      - name: branch
+        type: string
+        required: false
+        flag: "--branch"
+    output:
+      type: stdout
+
+  - name: run_tests
+    description: "Run the project test suite"
+    adapter: shell
+    shell:
+      command: "npm test 2>&1"
+      working_dir: "${PROJECT_ROOT}"
+      timeout_seconds: 120
+    args: []
+    output:
+      type: stdout
+      streaming: true
+
+  - name: docker_stats
+    description: "Get resource usage stats for running Docker containers"
+    adapter: cli
+    cli:
+      command: "docker"
+      subcommand: "stats"
+      args_template: "--no-stream --format json"
+    output:
+      type: stdout
+      format: json_lines
+
+  - name: build_project
+    description: "Build the project and return build output"
+    adapter: shell
+    shell:
+      command: "${BUILD_COMMAND}"
+      timeout_seconds: 300
+    args:
+      - name: target
+        type: string
+        required: false
+        description: "Build target (e.g. 'release', 'debug', 'prod')"
+    output:
+      type: stdout
+      streaming: true
+      exit_code_on_failure: true
+```
+
+---
+
+### Example E: Home Automation & IoT
+
+```yaml
+forge:
+  name: "home-automation"
+  description: "Control smart home devices via REST APIs"
+
+tools:
+  - name: set_light
+    description: "Turn a smart light on/off or set brightness and color"
+    adapter: rest
+    rest:
+      base_url: "http://192.168.1.100/api/${HUE_USER}"
+      endpoint: "/lights/{light_id}/state"
+      method: PUT
+    args:
+      - name: light_id
+        type: integer
+        required: true
+        path_param: light_id
+      - name: on
+        type: boolean
+        required: false
+        body_field: on
+      - name: brightness
+        type: integer
+        required: false
+        body_field: bri
+        description: "0-254"
+      - name: hue
+        type: integer
+        required: false
+        body_field: hue
+        description: "0-65535 color wheel"
+    output:
+      type: json
+
+  - name: get_weather
+    description: "Get current weather for a location"
+    adapter: rest
+    rest:
+      base_url: "https://api.open-meteo.com/v1"
+      endpoint: "/forecast"
+      method: GET
+    args:
+      - name: latitude
+        type: number
+        required: true
+        query_param: latitude
+      - name: longitude
+        type: number
+        required: true
+        query_param: longitude
+      - name: current
+        type: string
+        default: "temperature_2m,wind_speed_10m"
+        query_param: current
+    output:
+      type: json_field
+      field: current
+```
+
+---
+
+## 4. The Config Format — `mcp-forge.yaml`
+
+Full reference spec — everything in the UI serializes to this.
+
+```yaml
+forge:
+  name: "my-toolset"               # server identity
+  version: "1.0.0"
+  description: "Human-readable description for the registry and UI"
+  icon: "🔧"                        # emoji or URL for UI display
+  tags: [productivity, cli, local]
+
+server:
+  transport: http                  # stdio | http | sse | all
+  port: 8765
+  host: "127.0.0.1"               # 0.0.0.0 for remote access
+  path_prefix: "/mcp"
+  health_check: true               # GET /health for CI readiness probes
+  ui:
+    enabled: true                  # serve the web UI
+    port: 8766                     # can be same port as MCP, different path
+    path: "/ui"
+    theme: "dark"                  # dark | light | auto
+  cors:
+    enabled: true
+    origins: ["*"]
+
+auth:
+  mode: none                       # none | api_key | oauth2 | jwt | mtls
+  # api_key mode:
+  api_keys:
+    - key: "${FORGE_API_KEY}"
+      label: "my-key"
+      scopes: [read, execute]
+
+tools:
+  - name: tool_name                 # snake_case, used as MCP tool ID
+    description: "Clear description — this is what the LLM reads to decide when to use this tool"
+    adapter: cli                   # cli | rest | python | shell | openapi | docker | composed
+    
+    # --- CLI adapter ---
+    cli:
+      command: "mytool"            # binary name (must be on PATH or absolute)
+      subcommand: "subcommand"     # optional subcommand
+      args_template: null          # optional positional template
+      timeout_seconds: 30
+      working_dir: "${PWD}"
+      env:
+        MY_VAR: "${SOME_ENV_VAR}"
+
+    args:
+      - name: arg_name
+        type: string               # string | integer | number | boolean | array | object
+        required: true
+        flag: "--flag"             # CLI flag (-f or --flag)
+        positional: false          # or integer for position index
+        default: null
+        enum: []                   # allowed values
+        description: "Description for the LLM"
+        secret: false              # redacts from logs and UI
+
+    output:
+      type: stdout                 # stdout | stderr | json_field | exit_code | file | structured
+      format: text                 # text | json | json_lines | xml | markdown
+      streaming: false
+      field: null                  # for json_field type
+      jq: null                     # for structured type
+      on_error: stderr
+      exit_codes:
+        success: [0]
+        map:
+          1: "Error: resource not found"
+          2: "Error: permission denied"
+
+resources:
+  - name: resource_name
+    description: "Human-readable description"
+    uri: "file://${PWD}/docs/something.md"
+    mime_type: "text/markdown"
+    volatile: false                # true = changes frequently, clients should re-fetch
+
+prompts:
+  - name: prompt_name
+    description: "Description of when to use this prompt"
+    args:
+      - name: context
+        required: true
+    template: |
+      System prompt template with {{context}} interpolation.
+
+env:                               # environment variables for all tools
+  PROJECT_ROOT: "${PWD}"
+  # Secrets: reference via ${ENV_VAR}, never hardcode
+
+rate_limiting:
+  enabled: false
+  requests_per_minute: 60
+  burst: 10
+  per_tool: {}                     # override per tool name
+
+logging:
+  level: INFO
+  format: json
+  output: stdout                   # stdout | file | both
+  file: ".forge/forge.log"
+  redact_args: true                # never log arg values
+  redact_output: true              # never log tool output
+  audit: true                      # separate append-only audit log
+```
+
+---
+
+## 5. Engine — Processing Pipeline
 
 ```
 mcp-forge.yaml
      │
      ▼
 ┌─────────────┐
-│   Parser    │  Validates YAML schema (JSON Schema), catches errors early
+│   Parser    │  JSON Schema validation, type checking, early error detection
 └──────┬──────┘
        │
        ▼
 ┌─────────────┐
-│  Resolver   │  Expands env vars, resolves paths, checks binary existence
+│  Resolver   │  Env var expansion, binary existence checks, path validation
 └──────┬──────┘
        │
        ▼
 ┌─────────────┐
-│  Adapter    │  Selects adapter (CLI / REST / Python / OpenAPI)
-│  Factory    │  and generates the tool handler functions
+│  Adapter    │  Selects adapter per tool, generates async handler functions
+│  Factory    │
 └──────┬──────┘
        │
        ▼
 ┌─────────────┐
-│  FastMCP    │  Registers tools, resources, prompts with FastMCP
-│  Builder    │  Generates schema from arg definitions automatically
+│  FastMCP    │  Registers tools/resources/prompts, auto-generates JSON Schema
+│  Builder    │  from arg definitions (type, required, enum, description)
 └──────┬──────┘
        │
        ▼
 ┌─────────────┐
-│  Gateway    │  Applies auth, rate-limiting, CORS
+│  Gateway    │  Auth enforcement, rate limiting, CORS, input validation
 │  Layer      │
 └──────┬──────┘
        │
        ▼
 ┌─────────────┐
-│ MCP Server  │  Running and ready — stdio or HTTP
-│  (running)  │
+│  MCP Server │  Running — stdio or HTTP
+│  + Web UI   │  UI served on separate path by same process
 └─────────────┘
 ```
 
-### 4.1 Adapters (Extensible)
+### 5.1 Adapters
 
-| Adapter | Source | Description |
+| Adapter | Source | What it wraps |
 |---|---|---|
-| `cli` | Any CLI tool | Maps args to flags, captures stdout/stderr/exit |
-| `rest` | REST endpoints | HTTP wrapper with auth injection |
-| `python` | Python functions | Direct function call (no subprocess) |
-| `openapi` | OpenAPI 3.x spec | **Auto-generates all tools from spec** |
-| `graphql` | GraphQL schema | Auto-generates query tools |
-| `shell` | Shell scripts | Inline bash/sh execution |
-| `docker` | Docker container | Spawn container, call tool, destroy |
-| `grpc` | gRPC services | Proto-based tool generation |
+| `cli` | Any CLI binary | Maps typed args → flags, captures outputs |
+| `shell` | Shell script | Inline bash/sh/pwsh, env injection |
+| `rest` | HTTP endpoint | Auth injection, body/query/path param mapping |
+| `python` | Python function | Direct call, no subprocess overhead |
+| `openapi` | OpenAPI 3.x spec | **Auto-generates ALL tools from the spec — zero per-tool config** |
+| `graphql` | GraphQL schema | Auto-generates query + mutation tools |
+| `docker` | Docker image | Spawn container, execute, stream, destroy |
+| `grpc` | gRPC service | Proto-based tool generation |
+| `composed` | Multiple tools | Pipeline chaining with conditionals |
 
-The `openapi` adapter is particularly powerful: point it at a `swagger.json` and every endpoint becomes an MCP tool automatically. Zero config per-tool.
+### 5.2 Output Mapping
 
-### 4.2 Output Mapping
-
-This is what `any-cli-mcp-server` gets wrong. MCPForge handles:
+The feature `any-cli-mcp-server` gets completely wrong:
 
 ```yaml
 output:
-  type: stdout            # raw stdout as text response
-  type: json_field        # parse JSON, return specific field
-    field: "results"
-  type: exit_code         # map exit codes to success/error
+  type: stdout                    # return raw stdout as string
+  type: json_field                # parse JSON stdout, return specific field
+    field: "data.results"         # dot notation path
+  type: exit_code                 # map exit codes to success/error messages
     success: [0]
-    failure: [1, 2]
     map:
-      1: "Compliance violations found"
-      2: "Tool license error"
-  type: file              # tool writes a file, return path or contents
-    path_field: "output"
-    return: contents      # or "path"
-  type: structured        # post-process with jq expression
-    jq: ".violations[] | select(.severity == \"error\")"
+      1: "Not found"
+      127: "Command not found — is the tool installed?"
+  type: file                      # tool writes a file; return path or contents
+    path_field: "output_path"     # field in JSON stdout containing the path
+    return: contents              # contents | path
+  type: structured                # post-process stdout with jq expression
+    jq: ".items[] | select(.status == \"active\")"
+  type: streaming                 # progressive output as tool runs
+    chunk_size: 1024
 ```
 
 ---
 
-## 5. Embedded Web UI
+## 6. The Web UI — Beautiful by Design
 
-**Philosophy:** Light, embedded, no separate deployment. Served by the engine itself at `http://localhost:8765/ui`. Think Flower (Celery) or Traefik dashboard — functional, not pretty.
+**Served embedded by MCPForge itself** at `/ui`. No separate deployment, no Docker Compose, no node server. Open the browser, see something stunning.
 
-### 5.1 UI Sections
+### Design Language
+- **Dark glass** — deep navy/charcoal base, frosted glass panels with subtle border glow
+- **Accent color** — electric indigo/violet — used sparingly for live elements and CTAs
+- **Typography** — `Geist Mono` for all code/YAML, `Syne` or `Outfit` for UI labels and headings  
+- **Motion** — tools pulse when called, metrics animate on update, panels slide in smoothly
+- **Density** — information-rich without feeling cluttered. More Linear, less Jira.
 
-#### 🔧 Tool Builder (Visual Config)
-- Drag-and-drop tool definition
-- Adapter selector (CLI / REST / Python / OpenAPI)
-- Argument editor with type validation
-- Live YAML preview (bidirectional sync — edit YAML, UI updates and vice versa)
-- **"Test Tool" button** → runs the tool with test args, shows raw output
-- **"Import from --help"** → pastes CLI help text, AI parses it into tool definitions (MCPForge calls a lightweight LLM for this)
+### UI Sections
 
-#### 📊 Live Dashboard
-- Active connections (which MCP clients are connected)
-- Tool call rate (calls/min per tool)
-- Latency histogram per tool
-- Error rate with last error message
-- Total calls since start
-- Export metrics → Prometheus format
+#### 🏠 Dashboard (landing)
+- Server status: animated breathing dot (green=live, red=error, amber=starting)
+- Active connections panel — which MCP clients are currently connected, with client name and connection time
+- Live call heatmap — tool activity as a real-time sparkline per tool
+- Key metrics at a glance: total calls today, avg latency, error rate, uptime
+- Recent activity feed — last 20 tool calls with tool name, duration, status
 
-#### 🔐 Security Panel
-- Active API keys (create / revoke / scope)
-- OAuth config wizard
-- Per-tool permission matrix (which key can call which tool)
-- Audit log viewer (last N calls with args redacted)
+#### 🔧 Tools
+- Card grid of all configured tools — each card shows: name, adapter type badge, call count, avg latency, last called
+- Click a tool → drawer opens from the right:
+  - Tool details and description
+  - **"Try it"** panel — fill in args with a beautiful form, hit Run, see the live output
+  - Live call history for this specific tool
+  - Edit button → opens config editor focused on this tool
+- Status indicators: healthy / degraded / never called / timeout
 
-#### 📁 Config Editor
-- Monaco-based YAML editor with JSON Schema validation
-- Real-time error highlighting
-- "Apply & Reload" without restart (hot reload)
-- Config diff view (current vs saved)
-- Export as `mcp-forge.yaml` or `mcp-forge.lock`
+#### ⚙️ Config Editor
+- Full-width Monaco editor with YAML syntax highlighting + JSON Schema validation
+- Split view: YAML left, **Visual form builder right** — fully bidirectional sync
+- Changes highlight in real time (diff from saved state)
+- Toolbar: Validate → Save → Apply (hot reload without restart) → Download
+- Schema errors shown inline with helpful messages ("Expected string, got integer for `timeout_seconds`")
+- The visual form builder is drag-and-drop for tool ordering, type-safe arg editing with dropdowns for enums
 
-#### 🌐 Registry Browser
-- Browse public/private tool registry
-- One-click import tool definitions into current config
-- Publish your tools to registry
+#### 📊 Metrics
+- Full Prometheus-style dashboard, rendered in-UI
+- Per-tool charts: call rate, latency p50/p95/p99, error rate
+- Time range selector: last 5 min / 1h / 24h / 7d
+- Export: Prometheus scrape endpoint at `/metrics`, or download as CSV
+- Agent analytics: which tools are actually being used, which are ignored, which error most
+
+#### 🔐 Security
+- Auth mode badge (none / api_key / oauth2)
+- API key management: create, label, scope, revoke — all in UI
+- Per-tool permission matrix: visual grid of (key × tool) with toggle switches
+- Audit log viewer: searchable, filterable, never shows arg values (redacted)
+- OAuth wizard for remote deployment: step-by-step guide
+
+#### 🌐 Registry
+- Search the public MCPForge registry
+- Preview tool definitions before importing
+- One-click import: merges into current config
+- Publish panel: name, tags, visibility, version bump
 
 ---
 
-## 6. Security & Auth
+## 7. Security & Auth
 
-Enterprise MCP security is an active, messy space. MCPForge needs to be opinionated here.
+### 7.1 Auth Modes
 
-### 6.1 Auth Modes
+| Mode | Best For |
+|---|---|
+| `none` | Local dev only — server bound to 127.0.0.1 |
+| `api_key` | CI/CD pipelines, internal tooling |
+| `jwt` | Existing enterprise SSO (LDAP, Okta, etc.) |
+| `oauth2` | Remote hosted MCP servers, per-user auth (MCP spec June 2025) |
+| `mtls` | Zero-trust enterprise, highest security |
 
-```
-none        → local dev only, bind to 127.0.0.1
-api_key     → static keys with scopes, good for CI/CD
-jwt         → verify tokens from existing IdP (Bosch SSO, etc.)
-oauth2      → full OAuth 2.1 flow with PKCE (June 2025 MCP spec)
-mtls        → mutual TLS for zero-trust enterprise environments
-```
-
-### 6.2 Tool-Level RBAC
+### 7.2 Tool-Level RBAC
 
 ```yaml
 auth:
   mode: api_key
   api_keys:
-    - key: "${CI_KEY}"
-      label: "github-actions"
+    - key: "${READONLY_KEY}"
+      label: "read-only-agent"
       scopes:
-        allow_tools: [check_file, batch_check]  # not generate_report
-        allow_resources: [ruleset_docs]
+        allow_tools: [git_log, disk_usage]
+        deny_tools: [run_tests, docker_stats]
+    - key: "${ADMIN_KEY}"
+      label: "admin-agent"
+      scopes: ["*"]               # all tools
 ```
 
-### 6.3 Security Hardening (built-in, non-optional)
-- **No secrets in logs** — tool args are redacted by default
-- **No path traversal** — file paths are validated and sandboxed
-- **Subprocess isolation** — CLI tools run with restricted env
-- **Timeout enforcement** — every tool has a hard timeout
-- **Input validation** — all args validated against schema before execution
-- **Prompt injection detection** — optional scan of string args for injection patterns
-- **Audit trail** — append-only log of every tool call (who, what, when, result)
+### 7.3 Built-in Hardening
+- **No secrets in logs** — arg values always redacted
+- **No path traversal** — file paths validated and sandboxed
+- **Subprocess isolation** — CLI tools run with stripped-down env
+- **Timeout enforcement** — hard timeout per tool, no runaway processes
+- **Input validation** — all args validated against schema before any execution
+- **Prompt injection detection** — optional; scans string args for injection patterns
+- **Audit trail** — append-only log: who, what tool, when, result code (no args, no output)
 
 ---
 
-## 7. CI/CD Integration
+## 8. CI/CD Integration — First Class
 
-This is a first-class citizen, not an afterthought.
-
-### 7.1 GitHub Actions Example
+### GitHub Actions
 ```yaml
 - name: Start MCPForge
   run: |
     pip install mcp-forge
     mcp-forge serve --config mcp-forge.yaml --transport http --port 8765 &
-    mcp-forge wait-ready --timeout 10  # health check loop
+    mcp-forge wait-ready --timeout 15    # polls /health
 
-- name: Run compliance agent
+- name: Run agent task
   run: |
-    # Any MCP-compatible agent runner
-    claude-code --mcp http://localhost:8765/mcp \
-      "Run batch_check on ./src, fail if any AUTOSAR violations found"
+    claude --mcp http://localhost:8765/mcp \
+      "Analyze git log, run the tests, and if they pass build for release"
 
-- name: Stop MCPForge
+- name: Teardown
   if: always()
   run: mcp-forge stop
 ```
 
-### 7.2 Docker-native
+### Docker
 ```dockerfile
-FROM python:3.11-slim
-RUN pip install mcp-forge compliance-tool
+FROM python:3.12-slim
+RUN pip install mcp-forge ffmpeg-python yt-dlp
 COPY mcp-forge.yaml .
-EXPOSE 8765
-HEALTHCHECK CMD mcp-forge health --port 8765
+EXPOSE 8765 8766
+HEALTHCHECK CMD mcp-forge health
 CMD ["mcp-forge", "serve", "--transport", "http"]
 ```
 
-### 7.3 `mcp-forge.lock`
-Like `poetry.lock` — pins exact tool versions, binary hashes, adapter versions. Enables reproducible CI builds.
-
+### `mcp-forge.lock` — Reproducibility
 ```json
 {
   "forge_version": "1.2.0",
-  "generated_at": "2026-03-11T08:00:00Z",
+  "generated_at": "2026-03-11T09:00:00Z",
   "tools": {
-    "check_file": {
-      "cli_binary": "compliance-tool",
+    "convert_video": {
+      "cli_binary": "ffmpeg",
+      "binary_version": "6.1.1",
       "binary_hash": "sha256:abc123...",
       "adapter_version": "0.3.1"
     }
@@ -452,213 +775,210 @@ Like `poetry.lock` — pins exact tool versions, binary hashes, adapter versions
 
 ---
 
-## 8. Registry — Tool Catalog
-
-What makes this **amazing** vs. just useful.
-
-### 8.1 Concept
-A registry of reusable tool definitions — like Docker Hub but for MCP tool configs.
-
-```bash
-mcp-forge registry search "misra compliance"
-mcp-forge registry pull bosch/compliance-checker@1.2.0
-mcp-forge registry push ./mcp-forge.yaml --name myorg/my-tool
-```
-
-### 8.2 Registry Entry Format
-```yaml
-# registry.yaml (published metadata)
-name: bosch/compliance-checker
-version: 1.2.0
-description: "MISRA-C and AUTOSAR compliance tools"
-requires:
-  binaries: [compliance-tool>=2.0]
-  python: ">=3.10"
-tools: [check_file, batch_check, generate_report]
-tags: [automotive, embedded, compliance, misra]
-license: MIT
-verified: true    # MCPForge team verified it works
-```
-
-### 8.3 Registry Tiers
-- **Public** — open-source tools, community-verified
-- **Private** — org-scoped (self-hosted registry server)
-- **Certified** — MCPForge team-tested, security-audited
-
----
-
-## 9. What Would Make This AMAZING — Brainstorm
-
-Beyond the core, these features separate MCPForge from everything else:
+## 9. What Makes MCPForge AMAZING — Full Brainstorm
 
 ### 🤖 AI-Powered Tool Import
-- Paste any `--help` output → AI generates complete tool definition
-- Paste any OpenAPI spec → auto-generates all tools
-- Paste a shell script → AI infers args, types, outputs
-- **"Describe your tool in plain English"** → generates the YAML
+The killer feature for onboarding:
+- **"Paste --help output"** → AI reads it, generates complete typed `mcp-forge.yaml` tool definition
+- **"Paste OpenAPI spec"** → auto-generates ALL tools, zero per-tool config needed
+- **"Paste a shell script"** → AI infers args, types, output format
+- **"Describe your tool in plain English"** → generates YAML from natural language
+- `mcp-forge discover ffmpeg` → runs the binary, interrogates help, generates draft config
 
-### 🔀 Tool Composition
+### 🔀 Tool Composition — Mini Pipelines
 ```yaml
 tools:
-  - name: compliance_report_pipeline
+  - name: process_and_report
     adapter: composed
+    description: "Download video, convert it, then generate thumbnail"
     steps:
-      - tool: batch_check
-        args: { directory: "{{input.src_dir}}" }
-        output_as: scan_results
-      - tool: generate_report
-        args: { output_dir: "{{input.out_dir}}" }
-        condition: "{{scan_results.violation_count}} > 0"
+      - tool: download_video
+        args: { url: "{{input.url}}" }
+        output_as: downloaded
+      - tool: convert_video
+        args: { input_file: "{{downloaded.path}}", output_file: "{{downloaded.stem}}.mp4" }
+        condition: "{{downloaded.success}}"
+        output_as: converted
+      - tool: extract_thumbnail
+        args: { video: "{{converted.path}}", time: "00:00:05" }
+    output: "{{thumbnail.path}}"
 ```
-Chain tools into mini-pipelines, with conditionals. Agent calls one tool, MCPForge orchestrates the rest.
+Agent calls one tool, MCPForge orchestrates the pipeline internally. Conditional steps, output piping, the works.
 
-### 🧪 Built-in Testing Framework
+### 🧪 Built-in Test Framework
 ```bash
 mcp-forge test ./tests/
 ```
 ```yaml
-# tests/check_file.test.yaml
-tool: check_file
+# tests/convert_video.test.yaml
+tool: convert_video
 cases:
-  - name: "valid file passes"
-    args: { file_path: "./fixtures/clean.c", ruleset: "MISRA-C:2012" }
+  - name: "mp4 to webm succeeds"
+    args: { input_file: "./fixtures/sample.mp4", output_file: "/tmp/out.webm" }
     expect:
       exit_code: 0
-      output_contains: "0 violations"
-  - name: "violating file fails"
-    args: { file_path: "./fixtures/violations.c" }
+  - name: "missing input fails gracefully"
+    args: { input_file: "./fixtures/nonexistent.mp4", output_file: "/tmp/out.webm" }
     expect:
       exit_code: 1
-      output_contains: "violation"
+      error_contains: "No such file"
 ```
-Test your MCP tools before deploying them. CI-friendly, reports in JUnit XML.
+Tests run in CI, output JUnit XML, catch regressions before agents hit them.
 
-### 📡 Live Tool Streaming
-For long-running tools, stream output progressively to the MCP client instead of buffering:
+### 📡 Streaming Output
+Long-running tools stream progressive updates:
 ```yaml
 output:
   type: stdout
-  streaming: true    # sends incremental updates during execution
+  streaming: true    # client receives incremental chunks as they arrive
 ```
+The UI shows a live terminal-style output panel while the tool runs.
 
-### 🌍 Remote Hosting Mode
+### 🌍 One-Command Remote Deploy
 ```bash
-mcp-forge deploy --cloud cloudflare  # or vercel, fly.io, railway
+mcp-forge deploy --platform cloudflare   # or fly.io, railway, vercel
 ```
-One command to take a local `mcp-forge.yaml` and host it as a remote MCP server with HTTPS + OAuth. MCPForge handles the infra template.
+Takes local `mcp-forge.yaml`, generates platform config, deploys as HTTPS remote MCP server with OAuth. The whole world can use your tools.
 
-### 🔍 Schema Auto-Discovery
-```bash
-mcp-forge discover compliance-tool
-```
-MCPForge runs the CLI binary with various `--help` flags, interrogates it, and generates a draft `mcp-forge.yaml` as a starting point. Better than `any-cli-mcp-server` because you get a structured editable file.
-
-### 📈 Agent Analytics
-Beyond basic metrics — track **which tools agents actually use**, which they ignore, which fail most. Feed this back to help engineers improve tool descriptions and defaults.
+### 📈 Agent Analytics — Beyond Basic Metrics
+Not just call counts. Track:
+- Which tools agents use vs. ignore (helps improve descriptions)
+- Which arg combinations are most common (helps set better defaults)
+- Which tools cause agents to retry or fail (UX signal)
+- Cost attribution if tools hit paid APIs
+- Exportable to Grafana, Datadog, or any Prometheus-compatible system
 
 ### 🛡️ Prompt Injection Shield
-Scan incoming string arguments for patterns that could hijack the agent. Especially critical for tools that accept user-provided file paths or query strings.
+Configurable scan of string arguments for patterns that attempt to hijack agent behavior. Especially useful when tools accept user-provided inputs that flow through to the agent.
 
 ### 🔄 Hot Reload
-Edit `mcp-forge.yaml`, save, server reloads tools without dropping connections. Critical for dev iteration.
+Save `mcp-forge.yaml`, tools reload without dropping active connections. Essential for fast iteration.
 
-### 📦 Multi-Server Composition
+### 📦 Multi-Forge Composition
 ```yaml
-# mcp-forge-multi.yaml
+# combined.yaml
 includes:
-  - ./compliance/mcp-forge.yaml
-  - ./reporting/mcp-forge.yaml
-  - registry://bosch/shared-tools@2.0
+  - ./video-tools/mcp-forge.yaml
+  - ./dev-tools/mcp-forge.yaml
+  - registry://community/git-tools@2.1
 ```
-Merge multiple forge configs into one server. Tool namespacing prevents conflicts.
+Merge configs, namespace collisions auto-resolved, one server exposes everything.
+
+### 🎯 OpenAPI Auto-Import
+```yaml
+tools:
+  - adapter: openapi
+    spec: "https://api.github.com/openapi.json"   # or local file
+    include_operations: [listRepos, createIssue, searchCode]
+    auth_header: "Authorization: Bearer ${GITHUB_TOKEN}"
+```
+Hundreds of tools from one line. Every REST API with an OpenAPI spec becomes a full MCP server instantly.
+
+### 💾 Persistent Tool State
+Some tools need memory between calls (e.g., a session, a running process). MCPForge provides an optional key-value state store per tool instance.
+
+### 🌐 Multi-Language Adapter Support
+While the engine is Python, adapters can call tools in any language. The `docker` adapter is the escape hatch for any exotic runtime (Rust binaries, Node.js scripts, Java tools, etc.).
 
 ---
 
-## 10. Tech Stack Recommendation
+## 10. Tech Stack
 
-| Layer | Choice | Rationale |
+| Layer | Choice | Why |
 |---|---|---|
-| Core runtime | Python + FastMCP | FastMCP powers 70% of MCP servers, excellent ecosystem |
-| Web UI | React + Vite | Bundled into the Python package as static assets |
-| Config schema | JSON Schema + Pydantic | Validation + IDE autocomplete for free |
-| Metrics | Prometheus client | Standard, works with every monitoring stack |
-| Auth | Authlib | OAuth 2.1, JWT, handles the June 2025 MCP spec |
-| CLI | Typer | Clean, type-safe CLI |
-| Packaging | single `pip install mcp-forge` | One dependency, batteries included |
-| Binary distribution | PyInstaller / uv | Single binary for non-Python users |
+| Core runtime | Python 3.12 + FastMCP 3.x | FastMCP powers ~70% of MCP ecosystem |
+| Web UI | React 19 + Vite + Tailwind + Framer Motion | Beautiful, fast, modern |
+| UI components | shadcn/ui + Radix | Accessible, unstyled foundation to customize |
+| Code editor | Monaco (same as VSCode) | Best-in-class YAML/JSON editing |
+| Config schema | Pydantic v2 + JSON Schema | Validation + IDE autocomplete |
+| Metrics | Prometheus client | Universal compatibility |
+| Auth | Authlib | OAuth 2.1, PKCE, JWT — the June 2025 MCP spec |
+| CLI | Typer | Type-safe, auto-generated help |
+| Packaging | `pip install mcp-forge` + `uvx mcp-forge` | Zero friction install |
+| Binary dist | PyInstaller / uv | Single binary, no Python required |
 
 ---
 
-## 11. Differentiation vs. Existing Solutions
+## 11. Differentiation Matrix
 
-| Feature | MCPForge | Kong/Bifrost | any-cli-mcp-server | FastMCP raw |
-|---|---|---|---|---|
-| Zero Python for CLI tools | ✅ | ❌ | ✅ (fragile) | ❌ |
-| Typed arg mapping | ✅ | N/A | ❌ | Manual |
-| Output mapping (stdout/JSON/file) | ✅ | N/A | ❌ | Manual |
-| Embedded Web UI | ✅ | ✅ (enterprise) | ❌ | ❌ |
-| CI/CD native | ✅ | Partial | ❌ | Partial |
-| Tool testing framework | ✅ | ❌ | ❌ | ❌ |
-| Tool composition | ✅ | ❌ | ❌ | Manual |
-| AI-powered import | ✅ | ❌ | Partial | ❌ |
-| Open source | ✅ | ❌ (enterprise) | ✅ | ✅ |
-| Registry | ✅ | ❌ | ❌ | ❌ |
-| Lock file | ✅ | ❌ | ❌ | ❌ |
-| Price | Free / OSS | $$$$ | Free | Free |
+| Feature | **MCPForge** | Kong/Bifrost | any-cli-mcp | FastMCP raw | Langflow |
+|---|---|---|---|---|---|
+| Zero Python for CLI tools | ✅ | ❌ | ✅ fragile | ❌ | ❌ |
+| Typed arg mapping | ✅ | N/A | ❌ | Manual | ❌ |
+| Output mapping | ✅ | N/A | ❌ | Manual | Partial |
+| **Beautiful embedded UI** | ✅ | ✅ $$$$ | ❌ | ❌ | ✅ (heavy) |
+| CI/CD native | ✅ | Partial | ❌ | Partial | ❌ |
+| Tool test framework | ✅ | ❌ | ❌ | ❌ | ❌ |
+| Tool composition | ✅ | ❌ | ❌ | Manual | ✅ (visual) |
+| AI-powered import | ✅ | ❌ | Partial | ❌ | Partial |
+| OpenAPI auto-import | ✅ | ✅ | ❌ | ❌ | ✅ |
+| Open source | ✅ | ❌ | ✅ | ✅ | ✅ |
+| Registry | ✅ | ❌ | ❌ | ❌ | ❌ |
+| Lock file | ✅ | ❌ | ❌ | ❌ | ❌ |
+| Single binary install | ✅ | ❌ | ✅ | ✅ | ❌ |
+| Streaming output | ✅ | Partial | ❌ | Manual | ❌ |
+| Price | **Free/OSS** | $$$$ | Free | Free | Free/$$$ |
 
 ---
 
 ## 12. Roadmap
 
-### v0.1 — MVP (the PoC)
-- [ ] YAML parser + schema validation
-- [ ] CLI adapter (stdout, json, exit_code outputs)
-- [ ] FastMCP server generation
-- [ ] `stdio` and `http` transports
-- [ ] `api_key` auth
-- [ ] `mcp-forge validate` command
-- [ ] Health check endpoint
-- [ ] Basic metrics (Prometheus)
+### v0.1 — MVP (The PoC That Proves It Works)
+- [ ] YAML parser + Pydantic schema validation  
+- [ ] `cli` and `shell` adapters  
+- [ ] Output mapping: stdout, json_field, exit_code  
+- [ ] FastMCP server generation at runtime  
+- [ ] `stdio` and `http` transports  
+- [ ] `api_key` auth  
+- [ ] `mcp-forge validate` (CI linting)  
+- [ ] `mcp-forge wait-ready` (CI health check loop)
+- [ ] Health endpoint `/health`
 
-### v0.2 — Developer Experience
-- [ ] Embedded Web UI (config editor + tool tester)
-- [ ] REST adapter
+### v0.2 — It's Actually Beautiful
+- [ ] Embedded Web UI (Dashboard + Tools + Config Editor)
+- [ ] Bidirectional YAML ↔ visual editor sync
+- [ ] "Try it" drawer with live output
+- [ ] `rest` adapter
 - [ ] Hot reload
+- [ ] Basic Prometheus metrics at `/metrics`
 - [ ] `mcp-forge discover <binary>` (auto-gen from --help)
-- [ ] AI-powered import (calls Claude API)
 
-### v0.3 — Enterprise Ready
-- [ ] OAuth 2.1
+### v0.3 — Production Ready
+- [ ] OAuth 2.1 + JWT auth
 - [ ] Tool-level RBAC
-- [ ] Audit log
-- [ ] Lock file
-- [ ] Docker image
-- [ ] Tool testing framework
+- [ ] Audit log (UI + file)
+- [ ] Lock file generation
+- [ ] Docker official image
+- [ ] Tool test framework + JUnit output
+- [ ] AI-powered import (Claude API integration)
+- [ ] Streaming output support
 
-### v1.0 — Platform
-- [ ] Registry (public)
-- [ ] Tool composition
-- [ ] One-command cloud deploy
-- [ ] OpenAPI adapter
-- [ ] Streaming output
+### v1.0 — The Platform
+- [ ] Public registry + private org registry
+- [ ] Tool composition (composed adapter)
+- [ ] OpenAPI auto-import adapter
+- [ ] One-command remote deploy (Cloudflare / Fly.io)
+- [ ] Agent analytics dashboard
 - [ ] Prompt injection shield
+- [ ] Multi-forge composition
+- [ ] Full UI metrics dashboard with charts
 
 ---
 
-## 13. Name & Branding Options
+## 13. Name & Branding
 
 | Name | Vibe |
 |---|---|
-| **MCPForge** | Industrial, builds things, "forge a server" |
-| **forge-mcp** | CLI-tool-first naming convention |
-| **mcpctl** | kubectl-vibes, ops-friendly |
-| **toolbox-mcp** | Accessible, developer-friendly |
-| **mcpify** | Verb-based, "mcpify your CLI" |
-| **servemcp** | Literal, memorable |
+| **MCPForge** | Industrial craft — you forge tools. Strong. |
+| **Forge** | Short, punchy. `forge serve`. Might be taken. |
+| **mcpify** | Verb-based — "mcpify your tools" |
+| **toolcast** | Casting tools into MCP shape |
+| **mcpd** | Unix daemon naming — ops-friendly |
+| **Welder** | You weld your CLI tools into MCP servers |
 
-**MCPForge** wins. It implies creation, durability, and craft — which is the whole point.
+**MCPForge** still wins. Domain: `mcpforge.dev` — check availability.
 
 ---
 
-*Draft v0.1 — Mihai Ciprian / March 2026*
-*Status: Pre-PoC brainstorm — validate with a working CLI adapter first*
+*Draft v0.2 — March 2026*  
+*UI-first. World-scale. No niche BS.*

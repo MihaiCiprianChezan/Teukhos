@@ -218,3 +218,37 @@ def test_github_copilot_http_has_type(tmp_path):
     entry = data["servers"]["teukhos-test"]
     assert entry["type"] == "http"
     assert entry["url"] == "http://host:8765/mcp"
+
+
+from teukhos.installers.gemini_cli import GeminiCLIInstaller
+from teukhos.installers.codex import CodexInstaller
+
+
+def test_gemini_cli_slug():
+    installer = GeminiCLIInstaller()
+    assert installer.slug == "gemini-cli"
+    assert InstallScope.project not in installer.supported_scopes
+
+
+def test_gemini_cli_install_stdio(tmp_path):
+    config_file = tmp_path / "settings.json"
+    installer = GeminiCLIInstaller()
+    installer._config_path_override = {InstallScope.global_: config_file}
+    installer.install_stdio("teukhos-test", Path("/path/to/config.yaml"))
+    data = json.loads(config_file.read_text())
+    assert "teukhos-test" in data["mcpServers"]
+
+
+def test_codex_slug():
+    installer = CodexInstaller()
+    assert installer.slug == "codex"
+    assert InstallScope.project not in installer.supported_scopes
+
+
+def test_codex_install_stdio(tmp_path):
+    config_file = tmp_path / "config.json"
+    installer = CodexInstaller()
+    installer._config_path_override = {InstallScope.global_: config_file}
+    installer.install_stdio("teukhos-test", Path("/path/to/config.yaml"))
+    data = json.loads(config_file.read_text())
+    assert "teukhos-test" in data["mcpServers"]

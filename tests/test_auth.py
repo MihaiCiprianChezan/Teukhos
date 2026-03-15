@@ -41,3 +41,80 @@ def test_resolve_env_prefix_only():
     """'env:' with no var name should raise."""
     with pytest.raises(ValueError):
         resolve_key("env:")
+
+
+from starlette.applications import Starlette
+from starlette.responses import PlainTextResponse
+from starlette.routing import Route
+from starlette.testclient import TestClient
+
+from teukhos.auth import AuthMiddleware
+
+
+def _make_app(api_keys: list[str], protected_paths: list[str] | None = None):
+    """Create a minimal Starlette app with AuthMiddleware for testing."""
+    async def homepage(request):
+        return PlainTextResponse("ok")
+
+    async def mcp_endpoint(request):
+        return PlainTextResponse("mcp ok")
+
+    async def health(request):
+        return PlainTextResponse("healthy")
+
+    app = Starlette(routes=[
+        Route("/", homepage),
+        Route("/mcp", mcp_endpoint),
+        Route("/health", health),
+    ])
+    app.add_middleware(
+        AuthMiddleware,
+        api_keys=api_keys,
+        protected_paths=protected_paths or ["/mcp"],
+    )
+    return TestClient(app)
+
+
+def test_auth_middleware_valid_key():
+    client = _make_app(["secret-123"])
+    resp = client.get("/mcp", headers={"Authorization": "Bearer secret-123"})
+    assert resp.status_code == 200
+    assert resp.text == "mcp ok"
+
+
+def test_auth_middleware_invalid_key():
+    client = _make_app(["secret-123"])
+    resp = client.get("/mcp", headers={"Authorization": "Bearer wrong-key"})
+    assert resp.status_code == 401
+
+
+def test_auth_middleware_missing_header():
+    client = _make_app(["secret-123"])
+    resp = client.get("/mcp")
+    assert resp.status_code == 401
+
+
+def test_auth_middleware_health_not_protected():
+    client = _make_app(["secret-123"])
+    resp = client.get("/health")
+    assert resp.status_code == 200
+    assert resp.text == "healthy"
+
+
+def test_auth_middleware_unprotected_path():
+    client = _make_app(["secret-123"])
+    resp = client.get("/")
+    assert resp.status_code == 200
+
+
+def test_auth_middleware_multiple_keys():
+    client = _make_app(["key-1", "key-2"])
+    resp = client.get("/mcp", headers={"Authorization": "Bearer key-2"})
+    assert resp.status_code == 200
+
+
+def test_auth_middleware_empty_keys_allows_all():
+    """When no keys configured, middleware should not block."""
+    client = _make_app([])
+    resp = client.get("/mcp")
+    assert resp.status_code == 200

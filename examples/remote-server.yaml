@@ -1,0 +1,54 @@
+# Remote Teukhos server with HTTP transport and API key auth.
+#
+# Start:
+#   teukhos serve examples/remote-server.yaml
+#
+# Connect from a client:
+#   teukhos install examples/remote-server.yaml --client cursor --url http://HOST:8765/mcp
+#
+# Set your API key:
+#   export TEUKHOS_API_KEY="your-secret-key-here"
+#
+# Key format in config:
+#   "env:TEUKHOS_API_KEY"  — reads from environment variable (recommended)
+#   "my-literal-key"       — used as-is (not recommended for production)
+
+forge:
+  name: "remote-git-tools"
+  version: "1.0.0"
+  description: "Git tools exposed over HTTP with API key auth"
+
+server:
+  transport: http
+  host: "0.0.0.0"         # Bind to all interfaces for network access
+  port: 8765
+  cors_origins: ["*"]     # Allow all origins (restrict in production)
+
+auth:
+  mode: api_key
+  api_keys:
+    - "env:TEUKHOS_API_KEY"    # Reads from TEUKHOS_API_KEY env var
+
+tools:
+  - name: git_log
+    description: "Show recent git commits"
+    adapter: cli
+    cli:
+      command: git
+      subcommand: [log, --oneline]
+    args:
+      - name: count
+        type: integer
+        flag: "-n"
+        default: 10
+    output:
+      type: stdout
+
+  - name: git_status
+    description: "Show working tree status"
+    adapter: cli
+    cli:
+      command: git
+      subcommand: [status, --short]
+    output:
+      type: stdout

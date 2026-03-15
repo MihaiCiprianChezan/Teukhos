@@ -416,3 +416,44 @@ def test_cline_install_stdio(tmp_path):
     installer.install_stdio("teukhos-test", Path("/path/to/config.yaml"))
     data = json.loads(config_file.read_text())
     assert "teukhos-test" in data["mcpServers"]
+
+
+# --- Registry tests ---
+
+from teukhos.installers import (
+    ALL_INSTALLERS,
+    discover_clients,
+    get_all_installers,
+    get_installer,
+)
+
+
+def test_all_installers_have_unique_slugs():
+    slugs = [cls.slug for cls in ALL_INSTALLERS]
+    assert len(slugs) == len(set(slugs)), f"Duplicate slugs: {slugs}"
+
+
+def test_all_installers_count():
+    assert len(ALL_INSTALLERS) == 15
+
+
+def test_get_installer_by_slug():
+    inst = get_installer("cursor")
+    assert inst is not None
+    assert inst.name == "Cursor"
+
+
+def test_get_installer_unknown():
+    assert get_installer("nonexistent") is None
+
+
+def test_get_all_installers():
+    installers = get_all_installers()
+    assert len(installers) == 15
+    assert all(isinstance(i, BaseInstaller) for i in installers)
+
+
+def test_discover_clients_returns_list():
+    """discover_clients should return a list (may be empty in test env)."""
+    result = discover_clients()
+    assert isinstance(result, list)

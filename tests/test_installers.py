@@ -252,3 +252,167 @@ def test_codex_install_stdio(tmp_path):
     installer.install_stdio("teukhos-test", Path("/path/to/config.yaml"))
     data = json.loads(config_file.read_text())
     assert "teukhos-test" in data["mcpServers"]
+
+
+# --- Tier 2 installers ---
+
+from teukhos.installers.windsurf import WindsurfInstaller
+
+
+def test_windsurf_slug():
+    installer = WindsurfInstaller()
+    assert installer.slug == "windsurf"
+    assert installer.name == "Windsurf"
+
+
+def test_windsurf_install_stdio(tmp_path):
+    config_file = tmp_path / "mcp_config.json"
+    installer = WindsurfInstaller()
+    installer._config_path_override = {InstallScope.global_: config_file}
+    installer.install_stdio("teukhos-test", Path("/path/to/config.yaml"))
+    data = json.loads(config_file.read_text())
+    assert "teukhos-test" in data["mcpServers"]
+
+
+from teukhos.installers.roo_code import RooCodeInstaller
+
+
+def test_roo_code_slug():
+    installer = RooCodeInstaller()
+    assert installer.slug == "roo-code"
+    assert installer.name == "Roo Code"
+
+
+def test_roo_code_install_stdio(tmp_path):
+    config_file = tmp_path / "mcp.json"
+    installer = RooCodeInstaller()
+    installer._config_path_override = {InstallScope.global_: config_file}
+    installer.install_stdio("teukhos-test", Path("/path/to/config.yaml"))
+    data = json.loads(config_file.read_text())
+    assert "teukhos-test" in data["mcpServers"]
+
+
+from teukhos.installers.continue_dev import ContinueDevInstaller
+
+
+def test_continue_dev_slug():
+    installer = ContinueDevInstaller()
+    assert installer.slug == "continue"
+    assert installer.name == "Continue.dev"
+
+
+def test_continue_dev_install_stdio(tmp_path):
+    config_file = tmp_path / "config.json"
+    installer = ContinueDevInstaller()
+    installer._config_path_override = {InstallScope.global_: config_file}
+    installer.install_stdio("teukhos-test", Path("/path/to/config.yaml"))
+    data = json.loads(config_file.read_text())
+    assert "teukhos-test" in data["mcpServers"]
+
+
+from teukhos.installers.kiro import KiroInstaller
+
+
+def test_kiro_slug():
+    installer = KiroInstaller()
+    assert installer.slug == "kiro"
+    assert installer.name == "Kiro"
+
+
+def test_kiro_install_stdio(tmp_path):
+    config_file = tmp_path / "settings.json"
+    installer = KiroInstaller()
+    installer._config_path_override = {InstallScope.global_: config_file}
+    installer.install_stdio("teukhos-test", Path("/path/to/config.yaml"))
+    data = json.loads(config_file.read_text())
+    assert "teukhos-test" in data["mcpServers"]
+
+
+from teukhos.installers.auggie import AuggieInstaller
+
+
+def test_auggie_slug():
+    installer = AuggieInstaller()
+    assert installer.slug == "auggie"
+    assert installer.name == "Auggie"
+
+
+def test_auggie_install_stdio(tmp_path):
+    config_file = tmp_path / "mcp.json"
+    installer = AuggieInstaller()
+    installer._config_path_override = {InstallScope.global_: config_file}
+    installer.install_stdio("teukhos-test", Path("/path/to/config.yaml"))
+    data = json.loads(config_file.read_text())
+    assert "teukhos-test" in data["mcpServers"]
+
+
+from teukhos.installers.codebuddy import CodeBuddyInstaller
+
+
+def test_codebuddy_slug():
+    installer = CodeBuddyInstaller()
+    assert installer.slug == "codebuddy"
+    assert installer.name == "CodeBuddy"
+
+
+def test_codebuddy_install_stdio(tmp_path):
+    config_file = tmp_path / "mcp.json"
+    installer = CodeBuddyInstaller()
+    installer._config_path_override = {InstallScope.global_: config_file}
+    installer.install_stdio("teukhos-test", Path("/path/to/config.yaml"))
+    data = json.loads(config_file.read_text())
+    assert "teukhos-test" in data["mcpServers"]
+
+
+from teukhos.installers.opencode import OpenCodeInstaller
+
+
+def test_opencode_slug():
+    installer = OpenCodeInstaller()
+    assert installer.slug == "opencode"
+    assert installer.name == "OpenCode"
+
+
+def test_opencode_install_stdio(tmp_path):
+    config_file = tmp_path / "config.json"
+    installer = OpenCodeInstaller()
+    installer._config_path_override = {InstallScope.global_: config_file}
+    installer.install_stdio("teukhos-test", Path("/path/to/config.yaml"))
+    data = json.loads(config_file.read_text())
+    assert "teukhos-test" in data["mcpServers"]
+
+
+from teukhos.installers.trae import TraeInstaller
+
+
+def test_trae_slug():
+    installer = TraeInstaller()
+    assert installer.slug == "trae"
+    assert installer.name == "Trae"
+
+
+def test_trae_install_stdio(tmp_path):
+    config_file = tmp_path / "mcp.json"
+    installer = TraeInstaller()
+    installer._config_path_override = {InstallScope.global_: config_file}
+    installer.install_stdio("teukhos-test", Path("/path/to/config.yaml"))
+    data = json.loads(config_file.read_text())
+    assert "teukhos-test" in data["mcpServers"]
+
+
+from teukhos.installers.cline import ClineInstaller
+
+
+def test_cline_slug():
+    installer = ClineInstaller()
+    assert installer.slug == "cline"
+    assert installer.name == "Cline"
+
+
+def test_cline_install_stdio(tmp_path):
+    config_file = tmp_path / "mcp.json"
+    installer = ClineInstaller()
+    installer._config_path_override = {InstallScope.global_: config_file}
+    installer.install_stdio("teukhos-test", Path("/path/to/config.yaml"))
+    data = json.loads(config_file.read_text())
+    assert "teukhos-test" in data["mcpServers"]

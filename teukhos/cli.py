@@ -109,7 +109,11 @@ def serve(
 
     from teukhos.engine import build_server
 
-    mcp = build_server(forge_config)
+    bundle = build_server(forge_config)
+    mcp = bundle.mcp
+
+    # TODO: wire bundle.resolved_auth_keys and bundle.cors_origins into FastMCP middleware
+    # when FastMCP 3.x exposes a clean middleware injection API.
 
     if forge_config.server.transport == TransportType.http:
         mcp.run(

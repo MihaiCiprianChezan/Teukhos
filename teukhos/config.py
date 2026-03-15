@@ -44,6 +44,7 @@ class ServerConfig(BaseModel):
     transport: TransportType = TransportType.stdio
     host: str = "127.0.0.1"
     port: int = 8765
+    cors_origins: list[str] | None = None
 
 
 class AuthConfig(BaseModel):

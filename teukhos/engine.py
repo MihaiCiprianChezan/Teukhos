@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import inspect
+from dataclasses import dataclass, field
 from typing import Any
 
 from fastmcp import FastMCP
 
 from teukhos.adapters.cli import CLIAdapter
-from teukhos.config import ArgConfig, ArgType, ForgeConfig, OutputConfig, ToolConfig
+from teukhos.config import ArgConfig, ArgType, AuthMode, ForgeConfig, OutputConfig, ToolConfig
 from teukhos.output import OutputMapper
 
 # Map YAML arg types to Python types
@@ -20,7 +21,15 @@ ARG_TYPE_MAP: dict[ArgType, type] = {
 }
 
 
-def build_server(config: ForgeConfig) -> FastMCP:
+@dataclass
+class ServerBundle:
+    """Result of building a server — the FastMCP instance + resolved config."""
+    mcp: FastMCP
+    resolved_auth_keys: list[str] = field(default_factory=list)
+    cors_origins: list[str] | None = None
+
+
+def build_server(config: ForgeConfig) -> ServerBundle:
     """Build a FastMCP server from a ForgeConfig."""
     mcp = FastMCP(config.forge.name)
 
@@ -31,7 +40,17 @@ def build_server(config: ForgeConfig) -> FastMCP:
         handler = _build_handler(tool_config, adapter, tool_config.output)
         mcp.tool(name=tool_config.name, description=tool_config.description)(handler)
 
-    return mcp
+    # Resolve auth keys
+    resolved_keys: list[str] = []
+    if config.auth.mode == AuthMode.api_key and config.auth.api_keys:
+        from teukhos.auth import resolve_key
+        resolved_keys = [resolve_key(k) for k in config.auth.api_keys]
+
+    return ServerBundle(
+        mcp=mcp,
+        resolved_auth_keys=resolved_keys,
+        cors_origins=config.server.cors_origins,
+    )
 
 
 def _create_adapter(tool_config: ToolConfig) -> CLIAdapter | None:

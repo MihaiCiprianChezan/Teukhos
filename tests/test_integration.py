@@ -15,9 +15,9 @@ EXAMPLES_DIR = Path(__file__).parent.parent / "examples"
 async def test_git_log_tool_e2e():
     """Full E2E: load config, build server, call git_log tool."""
     config = load_config(EXAMPLES_DIR / "git-tools.yaml")
-    server = build_server(config)
+    bundle = build_server(config)
 
-    tool = await server.get_tool("git_log")
+    tool = await bundle.mcp.get_tool("git_log")
     result = await tool.fn(count=3)
     assert isinstance(result, str)
     assert len(result.strip()) > 0
@@ -29,9 +29,9 @@ async def test_git_log_tool_e2e():
 async def test_git_status_tool_e2e():
     """Full E2E: call git_status tool."""
     config = load_config(EXAMPLES_DIR / "git-tools.yaml")
-    server = build_server(config)
+    bundle = build_server(config)
 
-    tool = await server.get_tool("git_status")
+    tool = await bundle.mcp.get_tool("git_status")
     result = await tool.fn()
     assert isinstance(result, str)
 
@@ -40,9 +40,9 @@ async def test_git_status_tool_e2e():
 async def test_git_branch_tool_e2e():
     """Full E2E: call git_branch tool."""
     config = load_config(EXAMPLES_DIR / "git-tools.yaml")
-    server = build_server(config)
+    bundle = build_server(config)
 
-    tool = await server.get_tool("git_branch")
+    tool = await bundle.mcp.get_tool("git_branch")
     result = await tool.fn()
     assert isinstance(result, str)
     assert len(result.strip()) > 0
@@ -81,8 +81,8 @@ async def test_invalid_args_error_handling():
             )
         ],
     )
-    server = build_server(config)
-    tool = await server.get_tool("fail_tool")
+    bundle = build_server(config)
+    tool = await bundle.mcp.get_tool("fail_tool")
     result = await tool.fn(path="/nonexistent/path/that/does/not/exist")
     assert "Error" in result or "No such file" in result
 
@@ -91,9 +91,9 @@ async def test_invalid_args_error_handling():
 async def test_dev_tools_disk_usage():
     """E2E: call disk_usage from dev-tools."""
     config = load_config(EXAMPLES_DIR / "dev-tools.yaml")
-    server = build_server(config)
+    bundle = build_server(config)
 
-    tool = await server.get_tool("disk_usage")
+    tool = await bundle.mcp.get_tool("disk_usage")
     result = await tool.fn(path="/tmp")
     assert isinstance(result, str)
     assert len(result.strip()) > 0
@@ -103,9 +103,9 @@ async def test_dev_tools_disk_usage():
 async def test_dev_tools_list_processes():
     """E2E: call list_processes from dev-tools."""
     config = load_config(EXAMPLES_DIR / "dev-tools.yaml")
-    server = build_server(config)
+    bundle = build_server(config)
 
-    tool = await server.get_tool("list_processes")
+    tool = await bundle.mcp.get_tool("list_processes")
     result = await tool.fn()
     assert isinstance(result, str)
     assert "PID" in result or "pid" in result.lower()
@@ -143,8 +143,8 @@ async def test_exit_code_mapping_e2e():
             )
         ],
     )
-    server = build_server(config)
-    tool = await server.get_tool("check_exit")
+    bundle = build_server(config)
+    tool = await bundle.mcp.get_tool("check_exit")
     result = await tool.fn(cmd="exit 0")
     assert result == "All good"
     result2 = await tool.fn(cmd="exit 1")
@@ -156,7 +156,7 @@ async def test_all_example_configs_load():
     """Verify all example configs load and build servers successfully."""
     for yaml_file in EXAMPLES_DIR.glob("*.yaml"):
         config = load_config(yaml_file)
-        server = build_server(config)
-        assert server is not None
-        tools = await server.list_tools()
+        bundle = build_server(config)
+        assert bundle is not None
+        tools = await bundle.mcp.list_tools()
         assert len(tools) > 0

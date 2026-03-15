@@ -118,3 +118,28 @@ def test_auth_middleware_empty_keys_allows_all():
     client = _make_app([])
     resp = client.get("/mcp")
     assert resp.status_code == 200
+
+
+from teukhos.config import ForgeConfig, ForgeInfo, AuthConfig, AuthMode
+from teukhos.engine import build_server
+
+
+def test_build_server_with_auth_returns_resolved_keys(monkeypatch):
+    monkeypatch.setenv("TEST_KEY", "test-secret")
+    config = ForgeConfig(
+        forge=ForgeInfo(name="test-auth"),
+        auth=AuthConfig(mode=AuthMode.api_key, api_keys=["env:TEST_KEY"]),
+        tools=[],
+    )
+    result = build_server(config)
+    assert result.resolved_auth_keys == ["test-secret"]
+    assert result.mcp is not None
+
+
+def test_build_server_no_auth_returns_empty_keys():
+    config = ForgeConfig(
+        forge=ForgeInfo(name="test-no-auth"),
+        tools=[],
+    )
+    result = build_server(config)
+    assert result.resolved_auth_keys == []

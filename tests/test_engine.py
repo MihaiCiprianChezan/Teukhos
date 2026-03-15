@@ -10,16 +10,16 @@ from teukhos.engine import build_server
 
 def test_build_server_from_git_tools():
     config = load_config(Path(__file__).parent.parent / "examples" / "git-tools.yaml")
-    server = build_server(config)
-    assert server is not None
-    assert server.name == "git-tools"
+    bundle = build_server(config)
+    assert bundle is not None
+    assert bundle.mcp.name == "git-tools"
 
 
 def test_build_server_from_dev_tools():
     config = load_config(Path(__file__).parent.parent / "examples" / "dev-tools.yaml")
-    server = build_server(config)
-    assert server is not None
-    assert server.name == "dev-tools"
+    bundle = build_server(config)
+    assert bundle is not None
+    assert bundle.mcp.name == "dev-tools"
 
 
 @pytest.mark.asyncio
@@ -55,9 +55,9 @@ async def test_tool_execution_echo():
             )
         ],
     )
-    server = build_server(config)
+    bundle = build_server(config)
 
-    tool = await server.get_tool("echo_tool")
+    tool = await bundle.mcp.get_tool("echo_tool")
     assert tool is not None
     result = await tool.fn(message="hello from test")
     assert "hello from test" in result

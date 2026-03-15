@@ -190,71 +190,189 @@ def wait_ready(
 
 @app.command()
 def install(
-    config: Annotated[Path, typer.Argument(help="Path to teukhos.yaml config file")],
+    config: Annotated[
+        Path, typer.Argument(help="Path to teukhos.yaml config file")
+    ] = Path(DEFAULT_CONFIG),
     client: Annotated[
-        str, typer.Option("--client", "-c", help="Target client (claude-desktop)")
-    ] = "claude-desktop",
+        Optional[str], typer.Option("--client", "-c", help="Target client by slug")
+    ] = None,
+    all_clients: Annotated[
+        bool, typer.Option("--all", help="Install for all detected clients")
+    ] = False,
+    project: Annotated[
+        bool, typer.Option("--project", help="Use project-level config instead of global")
+    ] = False,
+    url: Annotated[
+        Optional[str], typer.Option("--url", help="Remote server URL (enables HTTP mode)")
+    ] = None,
+    key: Annotated[
+        str, typer.Option("--key", help="API key for HTTP mode")
+    ] = "env:TEUKHOS_API_KEY",
 ) -> None:
-    """Install a Teukhos server into an MCP client (e.g. Claude Desktop)."""
-    import json
-    import shutil
+    """Install a Teukhos server into MCP client(s).
 
-    if client != "claude-desktop":
-        console.print(
-            f"[bold red]Error:[/] Unsupported client '{client}'. "
-            "Only 'claude-desktop' is supported."
-        )
-        raise typer.Exit(1)
+    By default, discovers installed clients and prompts you to choose.
+    Use --client to target a specific one, or --all for all detected clients.
+    Use --url to configure HTTP transport (for remote servers).
+    """
+    from teukhos.installers import discover_clients, get_all_installers, get_installer
+    from teukhos.installers.base import InstallScope
 
-    config_path = _resolve_config(config).resolve()
-    if not config_path.exists():
-        console.print(f"[bold red]Error:[/] Config file not found: {config_path}")
-        raise typer.Exit(1)
+    scope = InstallScope.project if project else InstallScope.global_
 
-    teukhos_bin = shutil.which("teukhos") or "teukhos"
-
-    try:
-        forge_config = load_config(config_path)
-    except Exception as e:
-        console.print(f"[bold red]Error:[/] {e}")
-        raise typer.Exit(1)
-
-    server_name = f"teukhos-{forge_config.forge.name}"
-    entry = {
-        "command": teukhos_bin,
-        "args": ["serve", str(config_path)],
-    }
-
-    import platform
-    system = platform.system()
-    if system == "Darwin":
-        claude_config = (
-            Path.home() / "Library" / "Application Support" / "Claude" / "claude_desktop_config.json"
-        )
-    elif system == "Windows":
-        claude_config = (
-            Path.home() / "AppData" / "Roaming" / "Claude" / "claude_desktop_config.json"
-        )
+    # Determine target installers
+    if client:
+        inst = get_installer(client)
+        if inst is None:
+            console.print(f"[bold red]Error:[/] Unknown client '{client}'.")
+            console.print("Run 'teukhos clients' to see available clients.")
+            raise typer.Exit(1)
+        targets = [inst]
+    elif all_clients:
+        targets = discover_clients()
+        if not targets:
+            console.print("[yellow]No MCP clients detected on this system.[/]")
+            raise typer.Exit(0)
     else:
-        claude_config = Path.home() / ".config" / "claude" / "claude_desktop_config.json"
+        detected = discover_clients()
+        if not detected:
+            all_inst = get_all_installers()
+            console.print("[yellow]No MCP clients auto-detected.[/]")
+            console.print("Available clients:")
+            for inst in all_inst:
+                console.print(f"  {inst.slug:20s} {inst.name}")
+            console.print("\nUse --client <slug> to install for a specific client.")
+            raise typer.Exit(0)
 
-    if claude_config.exists():
-        with open(claude_config) as f:
-            desktop_config = json.load(f)
+        console.print("[bold]Detected MCP clients:[/]")
+        for i, inst in enumerate(detected, 1):
+            console.print(f"  {i}. {inst.name} ({inst.slug})")
+
+        choice = typer.prompt(
+            "Install for which client? (number, 'all', or 'q' to quit)",
+            default="1",
+        )
+        if choice.lower() == "q":
+            raise typer.Exit(0)
+        if choice.lower() == "all":
+            targets = detected
+        else:
+            try:
+                idx = int(choice) - 1
+                if idx < 0 or idx >= len(detected):
+                    raise ValueError
+                targets = [detected[idx]]
+            except ValueError:
+                console.print("[bold red]Invalid choice.[/]")
+                raise typer.Exit(1)
+
+    # Resolve config for stdio mode
+    if not url:
+        config_path = _resolve_config(config).resolve()
+        if not config_path.exists():
+            console.print(f"[bold red]Error:[/] Config file not found: {config_path}")
+            raise typer.Exit(1)
+        try:
+            forge_config = load_config(config_path)
+        except Exception as e:
+            console.print(f"[bold red]Error:[/] {e}")
+            raise typer.Exit(1)
+        server_name = f"teukhos-{forge_config.forge.name}"
     else:
-        claude_config.parent.mkdir(parents=True, exist_ok=True)
-        desktop_config = {}
+        # HTTP mode — server_name derived from URL or config if available
+        config_path = _resolve_config(config)
+        if config_path.exists():
+            try:
+                forge_config = load_config(config_path)
+                server_name = f"teukhos-{forge_config.forge.name}"
+            except Exception:
+                server_name = "teukhos-remote"
+        else:
+            server_name = "teukhos-remote"
 
-    if "mcpServers" not in desktop_config:
-        desktop_config["mcpServers"] = {}
+    # Install
+    for inst in targets:
+        try:
+            if url:
+                inst.install_http(server_name, url, key, scope=scope)
+            else:
+                inst.install_stdio(server_name, config_path, scope=scope)
+            effective_scope = inst._effective_scope(scope)
+            console.print(
+                f"[bold green]Installed![/] '{server_name}' → {inst.name} "
+                f"({effective_scope.value}: {inst.config_path(effective_scope)})"
+            )
+        except Exception as e:
+            console.print(f"[bold red]Error installing for {inst.name}:[/] {e}")
 
-    desktop_config["mcpServers"][server_name] = entry
+    if not url:
+        console.print("\n[dim]Restart your client(s) to pick up the changes.[/]")
 
-    with open(claude_config, "w") as f:
-        json.dump(desktop_config, f, indent=2)
 
-    console.print(f"[bold green]Installed![/] Added '{server_name}' to {claude_config}")
-    console.print("Restart Claude Desktop to pick up the changes.")
+@app.command()
+def uninstall(
+    server_name: Annotated[
+        str, typer.Argument(help="Server name to remove (e.g., teukhos-git-tools)")
+    ],
+    client: Annotated[
+        Optional[str], typer.Option("--client", "-c", help="Target client by slug")
+    ] = None,
+    all_clients: Annotated[
+        bool, typer.Option("--all", help="Remove from all detected clients")
+    ] = False,
+    project: Annotated[
+        bool, typer.Option("--project", help="Target project-level config")
+    ] = False,
+) -> None:
+    """Remove a Teukhos server from MCP client(s)."""
+    from teukhos.installers import discover_clients, get_installer
+    from teukhos.installers.base import InstallScope
+
+    scope = InstallScope.project if project else InstallScope.global_
+
+    if client:
+        inst = get_installer(client)
+        if inst is None:
+            console.print(f"[bold red]Error:[/] Unknown client '{client}'.")
+            raise typer.Exit(1)
+        targets = [inst]
+    elif all_clients:
+        targets = discover_clients()
+        if not targets:
+            console.print("[yellow]No MCP clients detected.[/]")
+            raise typer.Exit(0)
+    else:
+        console.print("[bold red]Error:[/] Specify --client <slug> or --all.")
+        raise typer.Exit(1)
+
+    for inst in targets:
+        try:
+            inst.uninstall(server_name, scope=scope)
+            console.print(f"[bold green]Removed![/] '{server_name}' from {inst.name}")
+        except Exception as e:
+            console.print(f"[bold red]Error removing from {inst.name}:[/] {e}")
+
+
+@app.command()
+def clients() -> None:
+    """List all supported MCP clients and their detection status."""
+    from teukhos.installers import get_all_installers
+    from teukhos.installers.base import InstallScope
+
+    table = Table(title="Supported MCP Clients")
+    table.add_column("Client", style="cyan")
+    table.add_column("Slug", style="magenta")
+    table.add_column("Detected", justify="center")
+    table.add_column("Scopes")
+    table.add_column("Global Config Path", style="dim")
+
+    for inst in get_all_installers():
+        detected = "[green]Yes[/]" if inst.detect() else "[dim]No[/]"
+        scopes = ", ".join(s.value for s in inst.supported_scopes)
+        config_path = str(inst.config_path(InstallScope.global_))
+        table.add_row(inst.name, inst.slug, detected, scopes, config_path)
+
+    console.print(table)
 
 
 @app.command()

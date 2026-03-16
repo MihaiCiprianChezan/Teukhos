@@ -1,5 +1,7 @@
 # Teukhos
 
+![Teukhos](./docs/images/tt.webp)
+
 > *You describe the tool. Teukhos forges it as MCP.*
 
 **Spawn production-ready MCP servers from a single YAML file. No Python required.**
@@ -57,16 +59,12 @@ tools:
       type: stdout
 ```
 
-**Serve:**
-```bash
-teukhos serve teukhos.yaml
-```
-
 **Register with your AI client:**
 ```bash
 teukhos install teukhos.yaml                           # auto-detect & prompt
 teukhos install teukhos.yaml --client cursor            # specific client
 teukhos install teukhos.yaml --client claude-code --project  # project-level
+teukhos install teukhos.yaml --dest .github/mcp.json   # any JSON file
 ```
 
 Ask Claude: *"Show me the last 5 commits"* — it uses the tool.
@@ -75,31 +73,9 @@ Ask Claude: *"Show me the last 5 commits"* — it uses the tool.
 
 ## How It Works
 
-```
-teukhos.yaml
-     │
-     ▼
-┌─────────────┐
-│   Parser    │  Pydantic validation, type checking, early error detection
-└──────┬──────┘
-       │
-       ▼
-┌─────────────┐
-│  Adapter    │  Builds async handler functions per tool
-│  Factory    │
-└──────┬──────┘
-       │
-       ▼
-┌─────────────┐
-│  FastMCP    │  Registers tools with correct JSON Schema
-│  Builder    │  (inferred from your arg definitions)
-└──────┬──────┘
-       │
-       ▼
-┌─────────────┐
-│  MCP Server │  stdio or HTTP — ready for Claude, Cursor, any MCP client
-└─────────────┘
-```
+<p align="center">
+  <img src="docs/images/how-it-works.svg" alt="How Teukhos Works" width="600"/>
+</p>
 
 ---
 
@@ -129,6 +105,8 @@ teukhos discover <binary>         (Coming soon) Auto-generate config from --help
 --project       Use project-level config (e.g., .cursor/mcp.json in cwd)
 --url           Remote server URL — enables HTTP mode
 --key           API key for HTTP mode (default: "env:TEUKHOS_API_KEY")
+--dest          Write to an arbitrary JSON config file (bypasses client detection)
+--config-key    JSON key for server entries: "mcpServers" (default) or "servers"
 ```
 
 **Options for `uninstall`:**
@@ -171,20 +149,87 @@ teukhos install --all         # register with all detected clients
 
 ---
 
+## `serve` vs `install` — When to Use Which
+
+**`teukhos install`** is the main command for most users. It registers your config with an AI client (Cursor, Claude Code, etc.). The client then spawns `teukhos serve` automatically via stdio when it needs your tools. You don't run `teukhos serve` yourself.
+
+**`teukhos serve`** is used in two scenarios:
+1. **Testing/debugging** — verify your YAML config starts without errors before registering it
+2. **HTTP server mode** — run a persistent network-accessible MCP server that remote clients connect to
+
+```bash
+# Most users: just install, the client handles the rest
+teukhos install git-tools.yaml --client cursor
+
+# Testing: verify config works
+teukhos serve git-tools.yaml
+
+# HTTP server: run persistently for remote access
+teukhos serve git-tools.yaml --transport http --port 8765
+```
+
+---
+
+## Installing to Custom Paths (`--dest`)
+
+Use `--dest` to write MCP config to any JSON file, bypassing client detection entirely. This is useful for `.github/mcp.json`, custom setups, or clients Teukhos doesn't know about yet.
+
+```bash
+# Write to .github/mcp.json (uses "mcpServers" key by default)
+teukhos install git-tools.yaml --dest .github/mcp.json
+
+# Use "servers" key (GitHub Copilot / VS Code format)
+teukhos install git-tools.yaml --dest .vscode/mcp.json --config-key servers
+
+# HTTP mode to custom path
+teukhos install --dest /path/to/config.json --url http://host:8765/mcp
+
+# Absolute path
+teukhos install git-tools.yaml --dest C:\projects\myapp\.cursor\mcp.json
+```
+
+The `--config-key` option controls the JSON key used for server entries:
+- `mcpServers` (default) — used by Claude Desktop, Claude Code, Cursor, and most clients
+- `servers` — used by GitHub Copilot / VS Code
+
+---
+
 ## Running Multiple Servers
 
 You can run multiple Teukhos servers in parallel on the same machine. Each config gets a unique server name derived from its `forge.name`, so they don't overwrite each other in client configs.
 
-**stdio (no conflicts — each client spawns its own process):**
+**stdio (no conflicts — each is a separate subprocess spawned by the client):**
 ```bash
 teukhos install git-tools.yaml --client cursor       # registers teukhos-git-tools
 teukhos install dev-tools.yaml --client cursor        # registers teukhos-dev-tools
+# Cursor now has two independent MCP servers, each spawned as its own process
+```
+
+The client's config will contain separate entries:
+```json
+{
+  "mcpServers": {
+    "teukhos-git-tools": {
+      "command": "teukhos",
+      "args": ["serve", "C:/path/to/git-tools.yaml"]
+    },
+    "teukhos-dev-tools": {
+      "command": "teukhos",
+      "args": ["serve", "C:/path/to/dev-tools.yaml"]
+    }
+  }
+}
 ```
 
 **HTTP (use different ports):**
 ```bash
 teukhos serve git-tools.yaml --transport http --port 8765 &
 teukhos serve dev-tools.yaml --transport http --port 8766 &
+teukhos serve media-tools.yaml --transport http --port 8767 &
+
+# Connect clients to each
+teukhos install --client cursor --url http://localhost:8765/mcp
+teukhos install --client cursor --url http://localhost:8766/mcp
 ```
 
 ---
@@ -475,12 +520,168 @@ Or use the install command: `teukhos install teukhos.yaml --client cursor`
 
 ---
 
+## Recipes
+
+Copy-paste examples for common tasks. Adjust paths and names to your setup.
+
+### Install & Register
+
+```bash
+# Install Teukhos
+pip install teukhos
+
+# Register git-tools with Cursor (global)
+teukhos install git-tools.yaml --client cursor
+
+# Register git-tools with Claude Code (project-level, in current folder)
+teukhos install git-tools.yaml --client claude-code --project
+
+# Register with Claude Desktop
+teukhos install git-tools.yaml --client claude-desktop
+
+# Register with GitHub Copilot in VS Code (project-level)
+teukhos install git-tools.yaml --client github-copilot --project
+
+# Register with Gemini CLI
+teukhos install git-tools.yaml --client gemini-cli
+
+# Register with Windsurf
+teukhos install git-tools.yaml --client windsurf
+
+# Register with all detected clients at once
+teukhos install git-tools.yaml --all
+
+# Auto-detect clients and pick interactively
+teukhos install git-tools.yaml
+```
+
+### Custom Destination (`--dest`)
+
+```bash
+# Write to .github/mcp.json for GitHub Copilot in a repo
+teukhos install git-tools.yaml --dest .github/mcp.json --config-key servers
+
+# Write to .vscode/mcp.json with "servers" key
+teukhos install git-tools.yaml --dest .vscode/mcp.json --config-key servers
+
+# Write to .cursor/mcp.json in another project
+teukhos install git-tools.yaml --dest /home/user/myproject/.cursor/mcp.json
+
+# Write to any path with default "mcpServers" key
+teukhos install git-tools.yaml --dest /etc/mcp/shared-tools.json
+```
+
+### Multiple Servers on One Machine
+
+```bash
+# Register two different configs with the same client (stdio, no conflicts)
+teukhos install git-tools.yaml --client cursor
+teukhos install dev-tools.yaml --client cursor
+
+# Run two HTTP servers on different ports
+teukhos serve git-tools.yaml --transport http --port 8765 &
+teukhos serve dev-tools.yaml --transport http --port 8766 &
+
+# Connect a client to both remote servers
+teukhos install --client cursor --url http://localhost:8765/mcp
+teukhos install --client cursor --url http://localhost:8766/mcp
+```
+
+### Remote / HTTP Server
+
+```bash
+# Start an HTTP server on localhost (for testing)
+teukhos serve git-tools.yaml --transport http
+
+# Start on all interfaces (for network access, requires auth in config)
+teukhos serve remote-server.yaml
+
+# Set the API key and start
+export TEUKHOS_API_KEY="my-secret-key-abc123"
+teukhos serve remote-server.yaml
+
+# Connect a client to a remote server
+teukhos install --client claude-code --url http://192.168.1.50:8765/mcp
+
+# Connect with a custom API key
+teukhos install --client cursor --url http://myserver:8765/mcp --key "env:MY_SERVER_KEY"
+
+# Connect with a literal key (not recommended for production)
+teukhos install --client cursor --url http://myserver:8765/mcp --key "s3cret-t0ken"
+
+# Write remote config to a custom file
+teukhos install --dest .vscode/mcp.json --config-key servers --url http://myserver:8765/mcp
+```
+
+### Validate & Test
+
+```bash
+# Validate a config (exits 0 if valid, 1 if not — good for CI)
+teukhos validate git-tools.yaml
+
+# Test-run a server locally (Ctrl+C to stop)
+teukhos serve git-tools.yaml
+
+# Start HTTP server and wait until ready (CI pipelines)
+teukhos serve git-tools.yaml --transport http --port 8765 &
+teukhos wait-ready --port 8765 --timeout 30
+```
+
+### Uninstall
+
+```bash
+# Remove from a specific client
+teukhos uninstall teukhos-git-tools --client cursor
+
+# Remove from a specific client (project-level config)
+teukhos uninstall teukhos-git-tools --client claude-code --project
+
+# Remove from all detected clients
+teukhos uninstall teukhos-git-tools --all
+```
+
+### List & Discover
+
+```bash
+# See all supported clients and which are installed on your system
+teukhos clients
+
+# Print Teukhos version
+teukhos version
+
+# Enable shell tab-completion (PowerShell)
+teukhos --show-completion >> $PROFILE
+
+# Enable shell tab-completion (bash)
+teukhos --show-completion >> ~/.bashrc
+
+# Enable shell tab-completion (zsh)
+teukhos --show-completion >> ~/.zshrc
+```
+
+### Docker
+
+```bash
+# Build
+docker build -t my-mcp-server .
+
+# Run with API key
+docker run -e TEUKHOS_API_KEY=my-secret -p 8765:8765 my-mcp-server
+
+# Connect a local client to the container
+teukhos install --client cursor --url http://localhost:8765/mcp
+```
+
+---
+
 ## Roadmap
 
 ### v0.3 — Current
 - Multi-client installer: 15 MCP clients supported
 - Project-level and global-level installation scope
 - `teukhos install` with auto-detect, `--client`, `--all`, `--project`, `--url`
+- `teukhos install --dest` to write to any arbitrary JSON config file
+- `teukhos install --config-key` to choose `mcpServers` or `servers` JSON format
 - `teukhos uninstall` to remove registrations
 - `teukhos clients` to list supported clients
 - HTTP Streamable transport with startup banner

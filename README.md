@@ -4,7 +4,7 @@
 
 > *You describe the tool. Teukhos forges it as MCP.*
 
-**Spawn production-ready MCP servers from a single YAML file. No Python required.**
+**Spawn production-ready MCP servers from a single YAML file. No Python programming required.**
 
 ```bash
 pip install teukhos

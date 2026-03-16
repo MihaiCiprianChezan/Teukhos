@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "teukhos"
-version = "0.3.0"
+version = "0.3.1"
 description = "Spawn MCP servers from declarative YAML configuration"
 readme = "README.md"
 license = "MIT"

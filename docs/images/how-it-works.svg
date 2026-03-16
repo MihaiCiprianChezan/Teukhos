@@ -1,0 +1,54 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 480" font-family="'Segoe UI', 'Helvetica Neue', Arial, sans-serif">
+  <!-- Background -->
+  <rect width="640" height="480" fill="transparent"/>
+
+  <!-- Step 1: teukhos.yaml -->
+  <rect x="170" y="32" width="300" height="50" rx="6" fill="#16213e" stroke="#4a5568" stroke-width="1.2"/>
+  <text x="320" y="54" text-anchor="middle" fill="#e2e8f0" font-size="15" font-weight="600">teukhos.yaml</text>
+  <text x="320" y="72" text-anchor="middle" fill="#718096" font-size="11">Declarative tool definitions</text>
+
+  <!-- Arrow 1 -->
+  <path d="M320 82 L320 108" stroke="#718096" stroke-width="1.2" fill="none" marker-end="url(#arrow)"/>
+
+  <!-- Step 2: Parser -->
+  <rect x="170" y="112" width="300" height="50" rx="6" fill="#16213e" stroke="#4a5568" stroke-width="1.2"/>
+  <text x="320" y="134" text-anchor="middle" fill="#e2e8f0" font-size="15" font-weight="600">Parser</text>
+  <text x="320" y="152" text-anchor="middle" fill="#718096" font-size="11">Pydantic validation, type checking, error detection</text>
+
+  <!-- Arrow 2 -->
+  <path d="M320 162 L320 188" stroke="#718096" stroke-width="1.2" fill="none" marker-end="url(#arrow)"/>
+
+  <!-- Step 3: Adapter Factory -->
+  <rect x="170" y="192" width="300" height="50" rx="6" fill="#16213e" stroke="#4a5568" stroke-width="1.2"/>
+  <text x="320" y="214" text-anchor="middle" fill="#e2e8f0" font-size="15" font-weight="600">Adapter Factory</text>
+  <text x="320" y="232" text-anchor="middle" fill="#718096" font-size="11">Builds async handler functions per tool</text>
+
+  <!-- Arrow 3 -->
+  <path d="M320 242 L320 268" stroke="#718096" stroke-width="1.2" fill="none" marker-end="url(#arrow)"/>
+
+  <!-- Step 4: FastMCP Builder -->
+  <rect x="170" y="272" width="300" height="50" rx="6" fill="#16213e" stroke="#4a5568" stroke-width="1.2"/>
+  <text x="320" y="294" text-anchor="middle" fill="#e2e8f0" font-size="15" font-weight="600">FastMCP Builder</text>
+  <text x="320" y="312" text-anchor="middle" fill="#718096" font-size="11">Registers tools with JSON Schema inference</text>
+
+  <!-- Arrow 4 -->
+  <path d="M320 322 L320 348" stroke="#718096" stroke-width="1.2" fill="none" marker-end="url(#arrow)"/>
+
+  <!-- Step 5: MCP Server -->
+  <rect x="140" y="352" width="360" height="58" rx="6" fill="#16213e" stroke="#63b3ed" stroke-width="1.5"/>
+  <text x="320" y="376" text-anchor="middle" fill="#e2e8f0" font-size="15" font-weight="600">MCP Server</text>
+  <text x="320" y="398" text-anchor="middle" fill="#718096" font-size="11">Ready for any MCP-compatible AI agent</text>
+
+  <!-- Transport badges -->
+  <rect x="148" y="360" width="48" height="20" rx="3" fill="#1a1a2e" stroke="#63b3ed" stroke-width="1"/>
+  <text x="172" y="374" text-anchor="middle" fill="#63b3ed" font-size="10" font-weight="600">stdio</text>
+  <rect x="148" y="384" width="48" height="20" rx="3" fill="#1a1a2e" stroke="#63b3ed" stroke-width="1"/>
+  <text x="172" y="398" text-anchor="middle" fill="#63b3ed" font-size="10" font-weight="600">HTTP</text>
+
+  <!-- Arrow marker -->
+  <defs>
+    <marker id="arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+      <path d="M0 0 L8 3 L0 6 Z" fill="#718096"/>
+    </marker>
+  </defs>
+</svg>

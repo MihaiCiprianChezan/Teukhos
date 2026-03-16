@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import platform
 from pathlib import Path
 
 from teukhos.installers.base import InstallScope, JsonMcpInstaller
@@ -20,4 +21,16 @@ class GitHubCopilotInstaller(JsonMcpInstaller):
         effective = self._effective_scope(scope)
         if effective == InstallScope.project:
             return self.cwd / ".vscode" / "mcp.json"
-        return Path.home() / ".vscode" / "mcp.json"
+        # Global path varies by OS
+        system = platform.system()
+        if system == "Windows":
+            return (
+                Path.home() / "AppData" / "Roaming"
+                / "Code" / "User" / "mcp.json"
+            )
+        elif system == "Darwin":
+            return (
+                Path.home() / "Library" / "Application Support"
+                / "Code" / "User" / "mcp.json"
+            )
+        return Path.home() / ".config" / "Code" / "User" / "mcp.json"

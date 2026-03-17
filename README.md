@@ -124,23 +124,23 @@ teukhos discover <binary>         (Coming soon) Auto-generate config from --help
 
 Teukhos can register with these MCP-compatible AI clients:
 
-| Client | Slug | Project Scope |
-|--------|------|:------------:|
-| Claude Desktop | `claude-desktop` | — |
-| Claude Code | `claude-code` | Yes |
-| Cursor | `cursor` | Yes |
-| GitHub Copilot / VS Code | `github-copilot` | Yes |
-| Gemini CLI | `gemini-cli` | — |
-| Codex | `codex` | — |
-| Windsurf | `windsurf` | Yes |
-| Cline | `cline` | Yes |
-| Roo Code | `roo-code` | Yes |
-| Continue.dev | `continue` | Yes |
-| Kiro | `kiro` | Yes |
-| Auggie | `auggie` | — |
-| CodeBuddy | `codebuddy` | — |
-| OpenCode | `opencode` | — |
-| Trae | `trae` | Yes |
+| Client | Slug | Project Scope | Config Format |
+|--------|------|:------------:|:------------:|
+| Claude Desktop | `claude-desktop` | — | JSON |
+| Claude Code | `claude-code` | Yes | JSON |
+| Cursor | `cursor` | Yes | JSON |
+| GitHub Copilot / VS Code | `github-copilot` | Yes | JSON |
+| Gemini CLI | `gemini-cli` | Yes | JSON |
+| Codex | `codex` | Yes | TOML |
+| Windsurf | `windsurf` | Yes | JSON |
+| Cline | `cline` | — | JSON |
+| Roo Code | `roo-code` | Yes | JSON |
+| Continue.dev | `continue` | Yes | JSON |
+| Kiro | `kiro` | Yes | JSON |
+| Augment Code | `augment` | — | JSON |
+| CodeBuddy | `codebuddy` | Yes | JSON |
+| OpenCode | `opencode` | Yes | JSON |
+| Trae | `trae` | Yes | JSON |
 
 ```bash
 teukhos clients              # see which are detected on your system

@@ -1,0 +1,124 @@
+forge:
+  name: "network-tools"
+  version: "1.0.0"
+  description: "Network diagnostics, HTTP testing, and DNS lookup tools"
+
+server:
+  transport: stdio
+
+tools:
+  - name: http_request
+    description: "Make an HTTP request and show response headers + body"
+    adapter: cli
+    cli:
+      command: curl
+      subcommand: ["-s", "-i"]
+      timeout_seconds: 30
+    args:
+      - name: url
+        type: string
+        description: "URL to request"
+        required: true
+        positional: true
+      - name: method
+        type: string
+        description: "HTTP method (GET, POST, PUT, DELETE)"
+        required: false
+        flag: "-X"
+      - name: header
+        type: string
+        description: "Custom header (e.g. 'Content-Type: application/json')"
+        required: false
+        flag: "-H"
+      - name: data
+        type: string
+        description: "Request body data"
+        required: false
+        flag: "-d"
+    output:
+      type: stdout
+
+  - name: dns_lookup
+    description: "Look up DNS records for a domain"
+    adapter: cli
+    cli:
+      command: dig
+      subcommand: ["+short"]
+      timeout_seconds: 10
+    args:
+      - name: domain
+        type: string
+        description: "Domain name to look up"
+        required: true
+        positional: true
+      - name: record_type
+        type: string
+        description: "Record type (A, AAAA, MX, TXT, CNAME, NS, SOA)"
+        required: false
+        positional: true
+    output:
+      type: stdout
+
+  - name: ssl_cert_check
+    description: "Check SSL/TLS certificate details and expiry for a domain"
+    adapter: cli
+    cli:
+      command: bash
+      subcommand: ["-c"]
+      timeout_seconds: 15
+    args:
+      - name: command
+        type: string
+        description: "Domain to check (auto-generated)"
+        required: true
+        positional: true
+        # Usage: call with "echo | openssl s_client -connect DOMAIN:443 2>/dev/null | openssl x509 -noout -dates -subject -issuer"
+    output:
+      type: stdout
+
+  - name: port_check
+    description: "Check if a TCP port is open on a host"
+    adapter: cli
+    cli:
+      command: bash
+      subcommand: ["-c"]
+      timeout_seconds: 10
+    args:
+      - name: command
+        type: string
+        description: "Auto-generated: timeout 5 bash -c 'echo >/dev/tcp/HOST/PORT' && echo OPEN || echo CLOSED"
+        required: true
+        positional: true
+    output:
+      type: stdout
+
+  - name: traceroute
+    description: "Trace the network path to a host"
+    adapter: cli
+    cli:
+      command: traceroute
+      subcommand: ["-m", "15"]
+      timeout_seconds: 60
+    args:
+      - name: host
+        type: string
+        description: "Hostname or IP to trace"
+        required: true
+        positional: true
+    output:
+      type: stdout
+
+  - name: whois_lookup
+    description: "Look up domain registration and ownership info"
+    adapter: cli
+    cli:
+      command: whois
+      timeout_seconds: 15
+    args:
+      - name: domain
+        type: string
+        description: "Domain to look up"
+        required: true
+        positional: true
+    output:
+      type: stdout

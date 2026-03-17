@@ -1,0 +1,67 @@
+forge:
+  name: "gpu-tools"
+  version: "1.0.0"
+  description: "NVIDIA GPU and CUDA monitoring tools for AI/ML workloads"
+
+server:
+  transport: stdio
+
+tools:
+  - name: gpu_status
+    description: "Show GPU utilization, memory usage, temperature, and power draw"
+    adapter: cli
+    cli:
+      command: nvidia-smi
+      timeout_seconds: 10
+    output:
+      type: stdout
+
+  - name: gpu_processes
+    description: "List processes currently using the GPU with their memory consumption"
+    adapter: cli
+    cli:
+      command: nvidia-smi
+      subcommand: ["--query-compute-apps=pid,process_name,used_memory", "--format=csv,noheader"]
+      timeout_seconds: 10
+    output:
+      type: stdout
+
+  - name: gpu_info
+    description: "Get detailed GPU specs — name, driver version, CUDA version, total memory"
+    adapter: cli
+    cli:
+      command: nvidia-smi
+      subcommand: ["--query-gpu=name,driver_version,memory.total,memory.free,compute_cap", "--format=csv,noheader"]
+      timeout_seconds: 10
+    output:
+      type: stdout
+
+  - name: gpu_memory
+    description: "Show per-GPU memory usage (used / total) for capacity planning"
+    adapter: cli
+    cli:
+      command: nvidia-smi
+      subcommand: ["--query-gpu=index,name,memory.used,memory.total,utilization.gpu", "--format=csv,noheader"]
+      timeout_seconds: 10
+    output:
+      type: stdout
+
+  - name: cuda_version
+    description: "Check installed CUDA compiler version"
+    adapter: cli
+    cli:
+      command: nvcc
+      subcommand: ["--version"]
+      timeout_seconds: 5
+    output:
+      type: stdout
+
+  - name: gpu_topology
+    description: "Show GPU interconnect topology (NVLink, PCIe) — useful for multi-GPU setups"
+    adapter: cli
+    cli:
+      command: nvidia-smi
+      subcommand: ["topo", "-m"]
+      timeout_seconds: 10
+    output:
+      type: stdout

@@ -1,0 +1,135 @@
+forge:
+  name: "image-tools"
+  version: "1.0.0"
+  description: "Image processing tools using ImageMagick"
+
+server:
+  transport: stdio
+
+tools:
+  - name: image_info
+    description: "Get image dimensions, format, color space, and file size"
+    adapter: cli
+    cli:
+      command: magick
+      subcommand: [identify, "-verbose"]
+      timeout_seconds: 15
+    args:
+      - name: input_file
+        type: string
+        description: "Path to image file"
+        required: true
+        positional: true
+    output:
+      type: stdout
+
+  - name: image_resize
+    description: "Resize an image to specified dimensions (e.g. '800x600', '50%')"
+    adapter: cli
+    cli:
+      command: magick
+      subcommand: [convert]
+      timeout_seconds: 30
+    args:
+      - name: input_file
+        type: string
+        description: "Path to input image"
+        required: true
+        positional: true
+      - name: size
+        type: string
+        description: "Target size (e.g. '800x600', '1920x1080>', '50%')"
+        required: true
+        flag: "-resize"
+      - name: output_file
+        type: string
+        description: "Path to output image"
+        required: true
+        positional: true
+    output:
+      type: exit_code
+      exit_codes:
+        0: "Image resized successfully"
+        1: "Error resizing image"
+
+  - name: image_convert
+    description: "Convert image between formats (PNG, JPEG, WebP, AVIF, TIFF, etc.)"
+    adapter: cli
+    cli:
+      command: magick
+      subcommand: [convert]
+      timeout_seconds: 30
+    args:
+      - name: input_file
+        type: string
+        description: "Path to input image"
+        required: true
+        positional: true
+      - name: quality
+        type: integer
+        description: "Output quality (1-100, for lossy formats)"
+        required: false
+        flag: "-quality"
+      - name: output_file
+        type: string
+        description: "Path to output image (format determined by extension)"
+        required: true
+        positional: true
+    output:
+      type: exit_code
+      exit_codes:
+        0: "Image converted successfully"
+        1: "Conversion error"
+
+  - name: image_thumbnail
+    description: "Create a thumbnail with exact dimensions, cropping to fit"
+    adapter: cli
+    cli:
+      command: magick
+      subcommand: [convert]
+      timeout_seconds: 15
+    args:
+      - name: input_file
+        type: string
+        description: "Path to input image"
+        required: true
+        positional: true
+      - name: size
+        type: string
+        description: "Thumbnail size (e.g. '150x150')"
+        required: true
+        flag: "-thumbnail"
+      - name: output_file
+        type: string
+        description: "Path to output thumbnail"
+        required: true
+        positional: true
+    output:
+      type: exit_code
+      exit_codes:
+        0: "Thumbnail created"
+        1: "Error creating thumbnail"
+
+  - name: image_strip_metadata
+    description: "Remove all EXIF/metadata from an image (privacy-safe sharing)"
+    adapter: cli
+    cli:
+      command: magick
+      subcommand: [convert, "-strip"]
+      timeout_seconds: 15
+    args:
+      - name: input_file
+        type: string
+        description: "Path to input image"
+        required: true
+        positional: true
+      - name: output_file
+        type: string
+        description: "Path to output image"
+        required: true
+        positional: true
+    output:
+      type: exit_code
+      exit_codes:
+        0: "Metadata stripped successfully"
+        1: "Error stripping metadata"

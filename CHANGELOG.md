@@ -11,9 +11,22 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - **Auth middleware wired into FastMCP** — `AuthMiddleware` now protects HTTP `/mcp` endpoint via `mcp.run(middleware=[...])`. Bearer token validation is fully functional for HTTP transport.
 - **CORS middleware wired into FastMCP** — `cors_origins` config option now applies Starlette `CORSMiddleware` with MCP-specific headers (`mcp-protocol-version`, `mcp-session-id`, `Authorization`).
 
+### Changed
+- **Codex installer rewritten for TOML** — Codex uses `~/.codex/config.toml` (not JSON), now handled correctly with `[mcp_servers.<name>]` table format
+- **Auggie renamed to Augment Code** — slug changed from `auggie` to `augment`, path corrected to `~/.augment/settings.json`
+- Gemini CLI now supports project scope (`.gemini/settings.json`)
+- Codex, CodeBuddy, and OpenCode now support project scope
+- Cline changed to global-only (no separate project config)
+
 ### Fixed
 - `__version__` now reads from `pyproject.toml` via `importlib.metadata` — single source of truth
 - GitHub Copilot global config path corrected to `%APPDATA%/Code/User/mcp.json` on Windows
+- **Cline** path corrected to VS Code `globalStorage/saoudrizwan.claude-dev/settings/cline_mcp_settings.json`
+- **Roo Code** global path corrected to VS Code `globalStorage/rooveterinaryinc.roo-cline/settings/cline_mcp_settings.json`, project path to `.roo/mcp.json`
+- **Continue.dev** global path corrected to `~/.continue/mcp.json`, project to `.continue/mcpServers/mcp.json`
+- **Kiro** paths corrected to `~/.kiro/settings/mcp.json` (subfolder)
+- **CodeBuddy** path corrected to `~/.codebuddy/.mcp.json` (dot prefix)
+- **OpenCode** path corrected to `~/.config/opencode/opencode.json`
 
 ---
 

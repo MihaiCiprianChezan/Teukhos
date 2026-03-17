@@ -1,0 +1,102 @@
+forge:
+  name: "docker-tools"
+  version: "1.0.0"
+  description: "Docker container and image management tools"
+
+server:
+  transport: stdio
+
+tools:
+  - name: docker_ps
+    description: "List running containers with status, ports, and resource usage"
+    adapter: cli
+    cli:
+      command: docker
+      subcommand: [ps, "--format", "table {{.Names}}\t{{.Image}}\t{{.Status}}\t{{.Ports}}"]
+      timeout_seconds: 10
+    args:
+      - name: all
+        type: boolean
+        description: "Show all containers (including stopped)"
+        required: false
+        flag: "--all"
+    output:
+      type: stdout
+
+  - name: docker_logs
+    description: "Fetch logs from a container"
+    adapter: cli
+    cli:
+      command: docker
+      subcommand: [logs]
+      timeout_seconds: 30
+    args:
+      - name: container
+        type: string
+        description: "Container name or ID"
+        required: true
+        positional: true
+      - name: tail
+        type: integer
+        description: "Number of lines from the end"
+        required: false
+        flag: "--tail"
+        default: 100
+      - name: since
+        type: string
+        description: "Show logs since timestamp or relative (e.g. '10m', '2h')"
+        required: false
+        flag: "--since"
+    output:
+      type: stdout
+
+  - name: docker_stats
+    description: "Show live CPU, memory, and network usage for running containers"
+    adapter: cli
+    cli:
+      command: docker
+      subcommand: [stats, "--no-stream", "--format", "table {{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}\t{{.NetIO}}"]
+      timeout_seconds: 15
+    output:
+      type: stdout
+
+  - name: docker_images
+    description: "List local Docker images with sizes"
+    adapter: cli
+    cli:
+      command: docker
+      subcommand: [images, "--format", "table {{.Repository}}\t{{.Tag}}\t{{.Size}}\t{{.CreatedSince}}"]
+      timeout_seconds: 10
+    output:
+      type: stdout
+
+  - name: docker_exec
+    description: "Execute a command inside a running container"
+    adapter: cli
+    cli:
+      command: docker
+      subcommand: [exec]
+      timeout_seconds: 60
+    args:
+      - name: container
+        type: string
+        description: "Container name or ID"
+        required: true
+        positional: true
+      - name: command
+        type: string
+        description: "Command to run inside the container"
+        required: true
+        positional: true
+    output:
+      type: stdout
+
+  - name: docker_compose_status
+    description: "Show status of all services in a Docker Compose project"
+    adapter: cli
+    cli:
+      command: docker
+      subcommand: [compose, ps, "--format", "table {{.Name}}\t{{.Service}}\t{{.State}}\t{{.Ports}}"]
+      timeout_seconds: 10
+    output:
+      type: stdout

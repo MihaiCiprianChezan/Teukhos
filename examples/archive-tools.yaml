@@ -1,0 +1,125 @@
+forge:
+  name: "archive-tools"
+  version: "1.0.0"
+  description: "File compression and archive management tools"
+
+server:
+  transport: stdio
+
+tools:
+  - name: tar_create
+    description: "Create a compressed tar archive (.tar.gz)"
+    adapter: cli
+    cli:
+      command: tar
+      subcommand: ["-czf"]
+      timeout_seconds: 120
+    args:
+      - name: archive
+        type: string
+        description: "Output archive path (e.g. 'backup.tar.gz')"
+        required: true
+        positional: true
+      - name: source
+        type: string
+        description: "File or directory to archive"
+        required: true
+        positional: true
+    output:
+      type: exit_code
+      exit_codes:
+        0: "Archive created successfully"
+        1: "Some files changed during archiving"
+        2: "Fatal error"
+
+  - name: tar_list
+    description: "List contents of a tar archive without extracting"
+    adapter: cli
+    cli:
+      command: tar
+      subcommand: ["-tzf"]
+      timeout_seconds: 30
+    args:
+      - name: archive
+        type: string
+        description: "Path to tar archive"
+        required: true
+        positional: true
+    output:
+      type: stdout
+
+  - name: tar_extract
+    description: "Extract a tar archive to a directory"
+    adapter: cli
+    cli:
+      command: tar
+      subcommand: ["-xzf"]
+      timeout_seconds: 120
+    args:
+      - name: archive
+        type: string
+        description: "Path to tar archive"
+        required: true
+        positional: true
+      - name: directory
+        type: string
+        description: "Target directory to extract into"
+        required: false
+        flag: "-C"
+    output:
+      type: exit_code
+      exit_codes:
+        0: "Extracted successfully"
+        2: "Fatal error"
+
+  - name: zip_create
+    description: "Create a ZIP archive"
+    adapter: cli
+    cli:
+      command: zip
+      subcommand: ["-r"]
+      timeout_seconds: 120
+    args:
+      - name: archive
+        type: string
+        description: "Output ZIP file path"
+        required: true
+        positional: true
+      - name: source
+        type: string
+        description: "File or directory to zip"
+        required: true
+        positional: true
+    output:
+      type: stdout
+
+  - name: zip_list
+    description: "List contents of a ZIP archive"
+    adapter: cli
+    cli:
+      command: unzip
+      subcommand: ["-l"]
+      timeout_seconds: 15
+    args:
+      - name: archive
+        type: string
+        description: "Path to ZIP file"
+        required: true
+        positional: true
+    output:
+      type: stdout
+
+  - name: file_checksum
+    description: "Calculate SHA-256 checksum for file integrity verification"
+    adapter: cli
+    cli:
+      command: sha256sum
+      timeout_seconds: 60
+    args:
+      - name: file
+        type: string
+        description: "Path to file"
+        required: true
+        positional: true
+    output:
+      type: stdout

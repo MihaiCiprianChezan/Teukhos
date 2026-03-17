@@ -1,0 +1,108 @@
+forge:
+  name: "database-tools"
+  version: "1.0.0"
+  description: "Database query and inspection tools for SQLite and PostgreSQL"
+
+server:
+  transport: stdio
+
+tools:
+  - name: sqlite_query
+    description: "Run a SQL query against a SQLite database file"
+    adapter: cli
+    cli:
+      command: sqlite3
+      subcommand: ["-header", "-column"]
+      timeout_seconds: 30
+    args:
+      - name: database
+        type: string
+        description: "Path to SQLite database file"
+        required: true
+        positional: true
+      - name: query
+        type: string
+        description: "SQL query to execute"
+        required: true
+        positional: true
+    output:
+      type: stdout
+
+  - name: sqlite_tables
+    description: "List all tables in a SQLite database"
+    adapter: cli
+    cli:
+      command: sqlite3
+      timeout_seconds: 10
+    args:
+      - name: database
+        type: string
+        description: "Path to SQLite database file"
+        required: true
+        positional: true
+      - name: query
+        type: string
+        description: "Tables query"
+        required: false
+        positional: true
+        default: ".tables"
+    output:
+      type: stdout
+
+  - name: sqlite_schema
+    description: "Show the CREATE TABLE schema for all tables in a SQLite database"
+    adapter: cli
+    cli:
+      command: sqlite3
+      timeout_seconds: 10
+    args:
+      - name: database
+        type: string
+        description: "Path to SQLite database file"
+        required: true
+        positional: true
+      - name: query
+        type: string
+        description: "Schema query"
+        required: false
+        positional: true
+        default: ".schema"
+    output:
+      type: stdout
+
+  - name: pg_query
+    description: "Run a SQL query against a PostgreSQL database"
+    adapter: cli
+    cli:
+      command: psql
+      subcommand: ["--no-psqlrc", "--pset=footer=off"]
+      timeout_seconds: 30
+    args:
+      - name: connection
+        type: string
+        description: "Connection string (e.g. 'postgresql://user:pass@localhost/mydb')"
+        required: true
+        flag: "-d"
+      - name: query
+        type: string
+        description: "SQL query to execute"
+        required: true
+        flag: "-c"
+    output:
+      type: stdout
+
+  - name: pg_tables
+    description: "List all tables in a PostgreSQL database"
+    adapter: cli
+    cli:
+      command: psql
+      subcommand: ["--no-psqlrc", "--pset=footer=off", "-c", "SELECT tablename FROM pg_tables WHERE schemaname = 'public' ORDER BY tablename;"]
+      timeout_seconds: 15
+    args:
+      - name: connection
+        type: string
+        description: "Connection string (e.g. 'postgresql://user:pass@localhost/mydb')"
+        required: true
+        flag: "-d"
+    output:
+      type: stdout

@@ -1,0 +1,155 @@
+forge:
+  name: "kubernetes-tools"
+  version: "1.0.0"
+  description: "Kubernetes cluster monitoring and management tools"
+
+server:
+  transport: stdio
+
+tools:
+  - name: k8s_pods
+    description: "List pods across all namespaces with status and resource usage"
+    adapter: cli
+    cli:
+      command: kubectl
+      subcommand: [get, pods, "-o", "wide"]
+      timeout_seconds: 15
+    args:
+      - name: namespace
+        type: string
+        description: "Kubernetes namespace (omit for default)"
+        required: false
+        flag: "-n"
+      - name: all_namespaces
+        type: boolean
+        description: "Show pods across all namespaces"
+        required: false
+        flag: "--all-namespaces"
+    output:
+      type: stdout
+
+  - name: k8s_logs
+    description: "Fetch logs from a Kubernetes pod"
+    adapter: cli
+    cli:
+      command: kubectl
+      subcommand: [logs]
+      timeout_seconds: 30
+    args:
+      - name: pod
+        type: string
+        description: "Pod name"
+        required: true
+        positional: true
+      - name: namespace
+        type: string
+        description: "Namespace"
+        required: false
+        flag: "-n"
+      - name: container
+        type: string
+        description: "Container name (for multi-container pods)"
+        required: false
+        flag: "-c"
+      - name: tail
+        type: integer
+        description: "Number of lines from the end"
+        required: false
+        flag: "--tail"
+        default: 100
+      - name: since
+        type: string
+        description: "Show logs since duration (e.g. '5m', '1h')"
+        required: false
+        flag: "--since"
+    output:
+      type: stdout
+
+  - name: k8s_describe
+    description: "Show detailed info about a Kubernetes resource (events, conditions, etc.)"
+    adapter: cli
+    cli:
+      command: kubectl
+      subcommand: [describe]
+      timeout_seconds: 15
+    args:
+      - name: resource_type
+        type: string
+        description: "Resource type (pod, service, deployment, node, etc.)"
+        required: true
+        positional: true
+      - name: name
+        type: string
+        description: "Resource name"
+        required: true
+        positional: true
+      - name: namespace
+        type: string
+        description: "Namespace"
+        required: false
+        flag: "-n"
+    output:
+      type: stdout
+
+  - name: k8s_services
+    description: "List services with cluster IPs, external IPs, and ports"
+    adapter: cli
+    cli:
+      command: kubectl
+      subcommand: [get, services, "-o", "wide"]
+      timeout_seconds: 10
+    args:
+      - name: namespace
+        type: string
+        description: "Namespace"
+        required: false
+        flag: "-n"
+      - name: all_namespaces
+        type: boolean
+        description: "Show across all namespaces"
+        required: false
+        flag: "--all-namespaces"
+    output:
+      type: stdout
+
+  - name: k8s_deployments
+    description: "List deployments with replica counts and rollout status"
+    adapter: cli
+    cli:
+      command: kubectl
+      subcommand: [get, deployments, "-o", "wide"]
+      timeout_seconds: 10
+    args:
+      - name: namespace
+        type: string
+        description: "Namespace"
+        required: false
+        flag: "-n"
+      - name: all_namespaces
+        type: boolean
+        description: "Show across all namespaces"
+        required: false
+        flag: "--all-namespaces"
+    output:
+      type: stdout
+
+  - name: k8s_top
+    description: "Show CPU and memory usage for pods or nodes"
+    adapter: cli
+    cli:
+      command: kubectl
+      subcommand: [top]
+      timeout_seconds: 15
+    args:
+      - name: resource
+        type: string
+        description: "Resource type: 'pods' or 'nodes'"
+        required: true
+        positional: true
+      - name: namespace
+        type: string
+        description: "Namespace (for pods)"
+        required: false
+        flag: "-n"
+    output:
+      type: stdout

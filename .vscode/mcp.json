@@ -1,0 +1,176 @@
+{
+  "servers": {
+
+    // ── Teukhos Development Server ──────────────────────────────────────
+    // The main Teukhos dev server running over HTTP with API key auth.
+    // Start: teukhos serve -t http -p 8765
+    "teukhos-dev-http": {
+      "type": "http",
+      "url": "http://127.0.0.1:8765/mcp",
+      "headers": {
+        "Authorization": "Bearer ${TEUKHOS_API_KEY}"
+      }
+    },
+
+    // ── Git Tools ───────────────────────────────────────────────────────
+    // Git log, status, diff, branch — lightweight repo inspection.
+    // Config: examples/git-tools.yaml
+    "git-tools-stdio": {
+      "type": "stdio",
+      "command": "teukhos",
+      "args": ["serve", "examples/git-tools.yaml"]
+    },
+    // HTTP variant — start first: teukhos serve examples/git-tools.yaml -t http -p 8770
+    "git-tools-http": {
+      "type": "http",
+      "url": "http://127.0.0.1:8770/mcp"
+    },
+
+    // ── Dev Tools ───────────────────────────────────────────────────────
+    // Process listing, disk usage, ping, and arbitrary shell commands.
+    // WARNING: run_command executes arbitrary shell — local use only.
+    // Config: examples/dev-tools.yaml
+    "dev-tools-stdio": {
+      "type": "stdio",
+      "command": "teukhos",
+      "args": ["serve", "examples/dev-tools.yaml"]
+    },
+    // HTTP variant — start first: teukhos serve examples/dev-tools.yaml -t http -p 8771
+    "dev-tools-http": {
+      "type": "http",
+      "url": "http://127.0.0.1:8771/mcp"
+    },
+
+    // ── Media Tools (ffmpeg / ffprobe) ──────────────────────────────────
+    // Video conversion and media file inspection.
+    // Requires: ffmpeg and ffprobe installed.
+    // Config: examples/media-tools.yaml
+    "media-tools-stdio": {
+      "type": "stdio",
+      "command": "teukhos",
+      "args": ["serve", "examples/media-tools.yaml"]
+    },
+    // HTTP variant — start first: teukhos serve examples/media-tools.yaml -t http -p 8772
+    "media-tools-http": {
+      "type": "http",
+      "url": "http://127.0.0.1:8772/mcp"
+    },
+
+    // ── GPU / CUDA Tools ────────────────────────────────────────────────
+    // GPU status, memory, processes, topology, CUDA version.
+    // Requires: NVIDIA GPU with nvidia-smi and nvcc (CUDA toolkit).
+    // Config: examples/gpu-tools.yaml
+    "gpu-tools-stdio": {
+      "type": "stdio",
+      "command": "teukhos",
+      "args": ["serve", "examples/gpu-tools.yaml"]
+    },
+    // HTTP variant — start first: teukhos serve examples/gpu-tools.yaml -t http -p 8773
+    "gpu-tools-http": {
+      "type": "http",
+      "url": "http://127.0.0.1:8773/mcp"
+    },
+
+    // ── Docker Tools ────────────────────────────────────────────────────
+    // Container listing, logs, stats, images, exec, and Compose status.
+    // Requires: Docker Desktop or Docker Engine running.
+    // Config: examples/docker-tools.yaml
+    "docker-tools-stdio": {
+      "type": "stdio",
+      "command": "teukhos",
+      "args": ["serve", "examples/docker-tools.yaml"]
+    },
+    // HTTP variant — start first: teukhos serve examples/docker-tools.yaml -t http -p 8774
+    "docker-tools-http": {
+      "type": "http",
+      "url": "http://127.0.0.1:8774/mcp"
+    },
+
+    // ── Image Tools (ImageMagick) ───────────────────────────────────────
+    // Resize, convert, thumbnail, identify, and strip EXIF metadata.
+    // Requires: ImageMagick 7+ (the `magick` command).
+    // Config: examples/image-tools.yaml
+    "image-tools-stdio": {
+      "type": "stdio",
+      "command": "teukhos",
+      "args": ["serve", "examples/image-tools.yaml"]
+    },
+    // HTTP variant — start first: teukhos serve examples/image-tools.yaml -t http -p 8775
+    "image-tools-http": {
+      "type": "http",
+      "url": "http://127.0.0.1:8775/mcp"
+    },
+
+    // ── Network Tools ───────────────────────────────────────────────────
+    // HTTP requests (curl), DNS lookups (dig), SSL cert checks, port
+    // scanning, traceroute, and WHOIS lookups.
+    // Config: examples/network-tools.yaml
+    "network-tools-stdio": {
+      "type": "stdio",
+      "command": "teukhos",
+      "args": ["serve", "examples/network-tools.yaml"]
+    },
+    // HTTP variant — start first: teukhos serve examples/network-tools.yaml -t http -p 8776
+    "network-tools-http": {
+      "type": "http",
+      "url": "http://127.0.0.1:8776/mcp"
+    },
+
+    // ── Database Tools (SQLite + PostgreSQL) ────────────────────────────
+    // Run SQL queries, list tables, inspect schemas.
+    // Requires: sqlite3 and/or psql installed.
+    // Config: examples/database-tools.yaml
+    "database-tools-stdio": {
+      "type": "stdio",
+      "command": "teukhos",
+      "args": ["serve", "examples/database-tools.yaml"]
+    },
+    // HTTP variant — start first: teukhos serve examples/database-tools.yaml -t http -p 8777
+    "database-tools-http": {
+      "type": "http",
+      "url": "http://127.0.0.1:8777/mcp"
+    },
+
+    // ── Kubernetes Tools ────────────────────────────────────────────────
+    // Pods, logs, describe, services, deployments, and resource usage.
+    // Requires: kubectl configured with a valid kubeconfig.
+    // Config: examples/kubernetes-tools.yaml
+    "kubernetes-tools-stdio": {
+      "type": "stdio",
+      "command": "teukhos",
+      "args": ["serve", "examples/kubernetes-tools.yaml"]
+    },
+    // HTTP variant — start first: teukhos serve examples/kubernetes-tools.yaml -t http -p 8778
+    "kubernetes-tools-http": {
+      "type": "http",
+      "url": "http://127.0.0.1:8778/mcp"
+    },
+
+    // ── Archive Tools ───────────────────────────────────────────────────
+    // Create/list/extract tar.gz and zip archives, SHA-256 checksums.
+    // Config: examples/archive-tools.yaml
+    "archive-tools-stdio": {
+      "type": "stdio",
+      "command": "teukhos",
+      "args": ["serve", "examples/archive-tools.yaml"]
+    },
+    // HTTP variant — start first: teukhos serve examples/archive-tools.yaml -t http -p 8779
+    "archive-tools-http": {
+      "type": "http",
+      "url": "http://127.0.0.1:8779/mcp"
+    },
+
+    // ── Remote Server (HTTP + Auth) ─────────────────────────────────────
+    // Example of a Teukhos server exposed over the network with API key
+    // authentication. Mirrors git-tools but over HTTP.
+    // Start: teukhos serve examples/remote-server.yaml
+    //   (uses port 8765 by default from the YAML, override with -p 8780)
+    "remote-server-http": {
+      "type": "http",
+      "url": "http://127.0.0.1:8780/mcp",
+      "headers": {
+        "Authorization": "Bearer ${TEUKHOS_API_KEY}"
+      }
+    }
+  }
+}

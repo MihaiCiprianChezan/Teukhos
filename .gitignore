@@ -101,7 +101,7 @@ cython_debug/
 
 # IDE
 .idea/
-.vscode/
+
 .cursorignore
 .cursorindexingignore
 

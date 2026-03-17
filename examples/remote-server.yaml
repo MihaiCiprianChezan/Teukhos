@@ -30,6 +30,18 @@ auth:
     - "env:TEUKHOS_API_KEY"    # Reads from TEUKHOS_API_KEY env var
 
 tools:
+  - name: ping
+    description: "Health check — returns server name and version"
+    adapter: cli
+    cli:
+      command: python
+      subcommand:
+        - "-c"
+        - "print('remote-server v1.0.0: pong')"
+      timeout_seconds: 15
+    output:
+      type: stdout
+
   - name: git_log
     description: "Show recent git commits"
     adapter: cli

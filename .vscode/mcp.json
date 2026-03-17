@@ -1,17 +1,6 @@
 {
   "servers": {
 
-    // ── Teukhos Development Server ──────────────────────────────────────
-    // The main Teukhos dev server running over HTTP with API key auth.
-    // Start: teukhos serve -t http -p 8765
-    "teukhos-dev-http": {
-      "type": "http",
-      "url": "http://127.0.0.1:8765/mcp",
-      "headers": {
-        "Authorization": "Bearer ${TEUKHOS_API_KEY}"
-      }
-    },
-
     // ── Git Tools ───────────────────────────────────────────────────────
     // Git log, status, diff, branch — lightweight repo inspection.
     // Config: examples/git-tools.yaml
@@ -158,19 +147,6 @@
     "archive-tools-http": {
       "type": "http",
       "url": "http://127.0.0.1:8779/mcp"
-    },
-
-    // ── Remote Server (HTTP + Auth) ─────────────────────────────────────
-    // Example of a Teukhos server exposed over the network with API key
-    // authentication. Mirrors git-tools but over HTTP.
-    // Start: teukhos serve examples/remote-server.yaml
-    //   (uses port 8765 by default from the YAML, override with -p 8780)
-    "remote-server-http": {
-      "type": "http",
-      "url": "http://127.0.0.1:8780/mcp",
-      "headers": {
-        "Authorization": "Bearer ${TEUKHOS_API_KEY}"
-      }
     }
   }
 }

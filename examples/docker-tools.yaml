@@ -7,6 +7,18 @@ server:
   transport: stdio
 
 tools:
+  - name: ping
+    description: "Health check — returns server name and version"
+    adapter: cli
+    cli:
+      command: python
+      subcommand:
+        - "-c"
+        - "print('docker-tools v1.0.0: pong')"
+      timeout_seconds: 15
+    output:
+      type: stdout
+
   - name: docker_ps
     description: "List running containers with status, ports, and resource usage"
     adapter: cli

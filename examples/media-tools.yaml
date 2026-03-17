@@ -1,14 +1,86 @@
 forge:
   name: "media-tools"
-  version: "1.0.0"
+  version: "2.0.0"
   description: "Media processing tools (ffmpeg/ffprobe) for AI agents"
 
 server:
   transport: stdio
 
 tools:
-  - name: convert_video
-    description: "Convert a video file to a different format using ffmpeg"
+  - name: ping
+    description: "Health check — returns server name and version"
+    adapter: cli
+    cli:
+      command: python
+      subcommand:
+        - "-c"
+        - "print('media-tools v1.0.0: pong')"
+      timeout_seconds: 15
+    output:
+      type: stdout
+
+  # ── Info ───────────────────────────────────────────────────────────────────
+  - name: get_media_info
+    description: "Get detailed media file info (streams, format, duration, codecs) as JSON"
+    adapter: cli
+    cli:
+      command: ffprobe
+      subcommand: ["-v", "quiet", "-print_format", "json", "-show_format", "-show_streams"]
+      timeout_seconds: 30
+    args:
+      - name: input_file
+        type: string
+        description: "Path to media file"
+        required: true
+        positional: true
+    output:
+      type: stdout
+
+  # ── Format Conversion ─────────────────────────────────────────────────────
+  - name: convert_to_mp4
+    description: "Convert any video to MP4 (H.264 + AAC, web-optimized with faststart)"
+    adapter: cli
+    cli:
+      command: ffmpeg
+      subcommand: ["-y"]
+      timeout_seconds: 600
+    args:
+      - name: input_file
+        type: string
+        description: "Path to input video file"
+        required: true
+        flag: "-i"
+      - name: output_file
+        type: string
+        description: "Path to output .mp4 file"
+        required: true
+        positional: true
+    output:
+      type: stderr
+
+  - name: convert_to_webm
+    description: "Convert any video to WebM (VP9 + Opus, good for web embedding)"
+    adapter: cli
+    cli:
+      command: ffmpeg
+      subcommand: ["-y", "-c:v", "libvpx-vp9", "-crf", "30", "-b:v", "0", "-c:a", "libopus"]
+      timeout_seconds: 600
+    args:
+      - name: input_file
+        type: string
+        description: "Path to input video file"
+        required: true
+        flag: "-i"
+      - name: output_file
+        type: string
+        description: "Path to output .webm file"
+        required: true
+        positional: true
+    output:
+      type: stderr
+
+  - name: convert_to_gif
+    description: "Convert video to high-quality animated GIF with palette optimization"
     adapter: cli
     cli:
       command: ffmpeg
@@ -20,26 +92,287 @@ tools:
         description: "Path to input video file"
         required: true
         flag: "-i"
+      - name: fps
+        type: integer
+        description: "Frame rate for the GIF (default 10)"
+        required: false
+        default: 10
+      - name: width
+        type: integer
+        description: "Width in pixels, height auto-scales (default 480)"
+        required: false
+        default: 480
+      - name: output_file
+        type: string
+        description: "Path to output .gif file"
+        required: true
+        positional: true
+    output:
+      type: stderr
+
+  # ── Resize / Scale ────────────────────────────────────────────────────────
+  - name: resize_video
+    description: "Resize video to a standard resolution (480p, 720p, 1080p, 1440p, 2160p/4K)"
+    adapter: cli
+    cli:
+      command: ffmpeg
+      subcommand: ["-y"]
+      timeout_seconds: 600
+    args:
+      - name: input_file
+        type: string
+        description: "Path to input video file"
+        required: true
+        flag: "-i"
+      - name: height
+        type: integer
+        description: "Target height in pixels (480, 720, 1080, 1440, 2160). Width auto-scales to preserve aspect ratio."
+        required: true
       - name: output_file
         type: string
         description: "Path to output video file"
         required: true
         positional: true
     output:
-      type: stderr  # ffmpeg writes progress to stderr
+      type: stderr
 
-  - name: get_video_info
-    description: "Get video file information using ffprobe"
+  # ── Rotation / Flip ───────────────────────────────────────────────────────
+  - name: rotate_video
+    description: "Rotate video: 90 (clockwise), 180, or 270 (counter-clockwise) degrees"
     adapter: cli
     cli:
-      command: ffprobe
-      subcommand: ["-v", "quiet", "-print_format", "json", "-show_format", "-show_streams"]
-      timeout_seconds: 30
+      command: ffmpeg
+      subcommand: ["-y"]
+      timeout_seconds: 300
     args:
       - name: input_file
         type: string
-        description: "Path to video file"
+        description: "Path to input video file"
+        required: true
+        flag: "-i"
+      - name: degrees
+        type: integer
+        description: "Rotation angle: 90 (clockwise), 180, or 270 (counter-clockwise)"
+        required: true
+      - name: output_file
+        type: string
+        description: "Path to output video file"
         required: true
         positional: true
     output:
-      type: stdout
+      type: stderr
+
+  - name: flip_video
+    description: "Flip video horizontally (mirror) or vertically"
+    adapter: cli
+    cli:
+      command: ffmpeg
+      subcommand: ["-y"]
+      timeout_seconds: 300
+    args:
+      - name: input_file
+        type: string
+        description: "Path to input video file"
+        required: true
+        flag: "-i"
+      - name: direction
+        type: string
+        description: "Flip direction: 'horizontal' (mirror left-right) or 'vertical' (upside-down)"
+        required: true
+      - name: output_file
+        type: string
+        description: "Path to output video file"
+        required: true
+        positional: true
+    output:
+      type: stderr
+
+  # ── Trim / Cut ────────────────────────────────────────────────────────────
+  - name: trim_video
+    description: "Trim/cut a segment from a video by start time and duration (fast, keyframe-based)"
+    adapter: cli
+    cli:
+      command: ffmpeg
+      subcommand: ["-y"]
+      timeout_seconds: 300
+    args:
+      - name: start_time
+        type: string
+        description: "Start time (HH:MM:SS or seconds, e.g. '00:01:30' or '90')"
+        required: true
+        flag: "-ss"
+      - name: input_file
+        type: string
+        description: "Path to input video file"
+        required: true
+        flag: "-i"
+      - name: duration
+        type: string
+        description: "Duration to keep (HH:MM:SS or seconds, e.g. '00:00:30' or '30')"
+        required: true
+        flag: "-t"
+      - name: output_file
+        type: string
+        description: "Path to output video file"
+        required: true
+        positional: true
+    output:
+      type: stderr
+
+  # ── Thumbnails / Screenshots ──────────────────────────────────────────────
+  - name: extract_frame
+    description: "Extract a single frame/screenshot from a video at a given timestamp"
+    adapter: cli
+    cli:
+      command: ffmpeg
+      subcommand: ["-y", "-frames:v", "1"]
+      timeout_seconds: 30
+    args:
+      - name: timestamp
+        type: string
+        description: "Timestamp to capture (HH:MM:SS or seconds, e.g. '00:00:05' or '5')"
+        required: true
+        flag: "-ss"
+      - name: input_file
+        type: string
+        description: "Path to input video file"
+        required: true
+        flag: "-i"
+      - name: output_file
+        type: string
+        description: "Path to output image (.jpg or .png)"
+        required: true
+        positional: true
+    output:
+      type: stderr
+
+  # ── Audio Extraction ──────────────────────────────────────────────────────
+  - name: extract_audio
+    description: "Extract audio track from a video file as MP3, WAV, FLAC, or AAC"
+    adapter: cli
+    cli:
+      command: ffmpeg
+      subcommand: ["-y", "-vn"]
+      timeout_seconds: 300
+    args:
+      - name: input_file
+        type: string
+        description: "Path to input video file"
+        required: true
+        flag: "-i"
+      - name: output_file
+        type: string
+        description: "Path to output audio file (.mp3, .wav, .flac, .aac)"
+        required: true
+        positional: true
+    output:
+      type: stderr
+
+  # ── Compression ───────────────────────────────────────────────────────────
+  - name: compress_video
+    description: "Compress/re-encode video with H.264. Lower CRF = better quality, higher = smaller file."
+    adapter: cli
+    cli:
+      command: ffmpeg
+      subcommand: ["-y", "-c:v", "libx264", "-c:a", "copy"]
+      timeout_seconds: 600
+    args:
+      - name: input_file
+        type: string
+        description: "Path to input video file"
+        required: true
+        flag: "-i"
+      - name: crf
+        type: integer
+        description: "Quality (18=near-lossless, 23=default, 28=aggressive compression)"
+        required: false
+        flag: "-crf"
+        default: 23
+      - name: preset
+        type: string
+        description: "Speed preset: ultrafast, fast, medium, slow, veryslow (slower = smaller file)"
+        required: false
+        flag: "-preset"
+        default: "medium"
+      - name: output_file
+        type: string
+        description: "Path to output video file"
+        required: true
+        positional: true
+    output:
+      type: stderr
+
+  # ── Speed Adjustment ──────────────────────────────────────────────────────
+  - name: change_speed
+    description: "Speed up or slow down a video (e.g. 2.0 = double speed, 0.5 = half speed)"
+    adapter: cli
+    cli:
+      command: ffmpeg
+      subcommand: ["-y"]
+      timeout_seconds: 600
+    args:
+      - name: input_file
+        type: string
+        description: "Path to input video file"
+        required: true
+        flag: "-i"
+      - name: speed
+        type: number
+        description: "Speed multiplier (0.5 = half speed, 2.0 = double speed). Range: 0.5 to 100."
+        required: true
+      - name: output_file
+        type: string
+        description: "Path to output video file"
+        required: true
+        positional: true
+    output:
+      type: stderr
+
+  # ── Audio-Only Tools ──────────────────────────────────────────────────────
+  - name: convert_audio
+    description: "Convert audio between formats (mp3, aac, wav, flac, ogg)"
+    adapter: cli
+    cli:
+      command: ffmpeg
+      subcommand: ["-y"]
+      timeout_seconds: 120
+    args:
+      - name: input_file
+        type: string
+        description: "Path to input audio file"
+        required: true
+        flag: "-i"
+      - name: bitrate
+        type: string
+        description: "Audio bitrate (e.g. '128k', '192k', '320k'). Ignored for lossless formats."
+        required: false
+        flag: "-b:a"
+        default: "192k"
+      - name: output_file
+        type: string
+        description: "Path to output audio file (.mp3, .aac, .wav, .flac, .ogg)"
+        required: true
+        positional: true
+    output:
+      type: stderr
+
+  - name: strip_audio
+    description: "Remove audio track from a video (output video-only, no re-encoding)"
+    adapter: cli
+    cli:
+      command: ffmpeg
+      subcommand: ["-y", "-an", "-c:v", "copy"]
+      timeout_seconds: 120
+    args:
+      - name: input_file
+        type: string
+        description: "Path to input video file"
+        required: true
+        flag: "-i"
+      - name: output_file
+        type: string
+        description: "Path to output video file (no audio)"
+        required: true
+        positional: true
+    output:
+      type: stderr

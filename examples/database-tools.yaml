@@ -7,6 +7,18 @@ server:
   transport: stdio
 
 tools:
+  - name: ping
+    description: "Health check — returns server name and version"
+    adapter: cli
+    cli:
+      command: python
+      subcommand:
+        - "-c"
+        - "print('database-tools v1.0.0: pong')"
+      timeout_seconds: 15
+    output:
+      type: stdout
+
   - name: sqlite_query
     description: "Run a SQL query against a SQLite database file"
     adapter: cli

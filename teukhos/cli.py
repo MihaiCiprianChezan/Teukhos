@@ -13,15 +13,31 @@ from rich.table import Table
 from teukhos import __version__
 from teukhos.config import TransportType, load_config
 
+def _version_callback(value: bool) -> None:
+    if value:
+        print(f"Teukhos v{__version__}")
+        raise typer.Exit()
+
+
 app = typer.Typer(
     name="teukhos",
     help=(
-        "Teukhos -- Spawn MCP servers from declarative YAML configuration.\n\n"
+        f"Teukhos v{__version__} -- Spawn MCP servers from declarative YAML configuration.\n\n"
         "You describe the tool. Teukhos forges it."
     ),
     no_args_is_help=True,
 )
-console = Console()
+console = Console(stderr=True)
+
+
+@app.callback()
+def main(
+    version: Annotated[
+        Optional[bool],
+        typer.Option("--version", "-V", help="Show version and exit.", callback=_version_callback, is_eager=True),
+    ] = None,
+) -> None:
+    """Teukhos -- Spawn MCP servers from declarative YAML configuration."""
 
 # Accept both the new teukhos.yaml and the legacy mcp-forge.yaml names
 DEFAULT_CONFIG = "teukhos.yaml"

@@ -1,9 +1,11 @@
-# Teukhos v0.3.6
+# Teukhos
 
 [![CI](https://github.com/MihaiCiprianChezan/Teukhos/actions/workflows/ci.yml/badge.svg)](https://github.com/MihaiCiprianChezan/Teukhos/actions)
 [![PyPI](https://img.shields.io/pypi/v/teukhos)](https://pypi.org/project/teukhos/)
 [![Python](https://img.shields.io/pypi/pyversions/teukhos)](https://pypi.org/project/teukhos/)
 [![License](https://img.shields.io/pypi/l/teukhos)](LICENSE)
+
+---
 
 ![Teukhos](https://raw.githubusercontent.com/MihaiCiprianChezan/Teukhos/main/docs/images/tt.webp)
 

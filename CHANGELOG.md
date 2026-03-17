@@ -5,6 +5,29 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [0.3.6] — 2026-03-17
+
+### Changed
+- **Cross-platform example configs** — `dev-tools.yaml`, `network-tools.yaml`, and `archive-tools.yaml`
+  rewritten to work on Windows, Linux, and macOS without OS-specific variants.
+  Uses Python stdlib (`shutil`, `socket`, `ssl`, `zipfile`, `hashlib`, `urllib`)
+  to replace OS-specific CLI tools (`ps`, `du`, `dig`, `whois`, `sha256sum`, `zip`/`unzip`, etc.)
+- Tools that differ per OS (`ping`, `traceroute`, `list_processes`) now auto-detect via `platform.system()`
+- `run_command` tool uses Python `subprocess.run(shell=True)` — automatically picks the system shell
+
+### Added
+- **Comprehensive integration test suite** (`tests/test_all_servers.py`) — 62 tests covering
+  all 20 MCP servers (10 stdio + 10 HTTP): ping, tool listing, schema validation,
+  concurrent pings, rapid sequential pings, cross-transport comparison
+- **Ping health check tool** added to all 10 example configs — `python -c "print('<name> v1.0.0: pong')"`
+  pattern enables fast server health verification
+- HTTP server start/stop scripts for dev testing (`scripts/start-http-servers.ps1`, `scripts/stop-http-servers.ps1`)
+
+### Fixed
+- Normalized em dashes to hyphens in ping tool descriptions for consistent output parsing
+
+---
+
 ## [0.3.3] — 2026-03-17
 
 ### Added

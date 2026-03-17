@@ -1,10 +1,12 @@
-# Teukhos
+# Teukhos v0.3.6
 
 ![Teukhos](https://raw.githubusercontent.com/MihaiCiprianChezan/Teukhos/main/docs/images/tt.webp)
 
 > *You describe the tool. Teukhos forges it as MCP.*
 
 **Spawn production-ready MCP servers from a single YAML file. No Python programming required.**
+
+> **Status: Beta** — Core features are stable and tested. API may change before v1.0.
 
 ```bash
 pip install teukhos
@@ -334,7 +336,7 @@ tools:
       type: stdout
 ```
 
-### System Tools
+### System Tools (Cross-Platform)
 ```yaml
 forge:
   name: "sysops"
@@ -344,8 +346,10 @@ tools:
     description: "Show disk usage for a path"
     adapter: cli
     cli:
-      command: du
-      subcommand: ["-sh"]
+      command: python
+      subcommand:
+        - "-c"
+        - "import shutil,sys,os; p=sys.argv[1] if len(sys.argv)>1 else '.'; p=os.path.abspath(p); u=shutil.disk_usage(p); print(f'Total: {u.total/1024/1024:.0f} MB  Used: {u.used/1024/1024:.0f} MB  Free: {u.free/1024/1024:.0f} MB')"
     args:
       - name: path
         type: string
@@ -358,8 +362,10 @@ tools:
     description: "Check if a host is reachable"
     adapter: cli
     cli:
-      command: ping
-      subcommand: ["-c", "3"]
+      command: python
+      subcommand:
+        - "-c"
+        - "import subprocess,platform,sys; h=sys.argv[1]; flag='-n' if platform.system()=='Windows' else '-c'; r=subprocess.run(['ping',flag,'3',h],capture_output=True,text=True); print(r.stdout); exit(r.returncode)"
       timeout_seconds: 15
     args:
       - name: host
@@ -688,6 +694,9 @@ teukhos install --client cursor --url http://localhost:8765/mcp
 - `env:` prefix API key resolution
 - CORS configuration for HTTP transport
 - Full authentication middleware (Bearer token)
+- Cross-platform example configs (Windows, Linux, macOS)
+- Ping health check tool on all example servers
+- Comprehensive integration test suite (62 tests across 20 servers)
 
 ### v0.4 — Production Ready
 - `rest` adapter (wrap any HTTP endpoint)
@@ -733,5 +742,7 @@ Pull requests welcome.
 ## License
 
 MIT — see [LICENSE](LICENSE).
+
+See [CHANGELOG](CHANGELOG.md) for version history.
 
 *Built by [Mihai Ciprian Chezan](https://github.com/MihaiCiprianChezan)*

@@ -34,7 +34,7 @@ console = Console(stderr=True)
 def main(
     version: Annotated[
         Optional[bool],
-        typer.Option("--version", "-V", help="Show version and exit.", callback=_version_callback, is_eager=True),
+        typer.Option("--version", help="Show version and exit.", callback=_version_callback, is_eager=True),
     ] = None,
 ) -> None:
     """Teukhos -- Spawn MCP servers from declarative YAML configuration."""

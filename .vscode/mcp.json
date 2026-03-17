@@ -7,7 +7,7 @@
     "git-tools-stdio": {
       "type": "stdio",
       "command": "teukhos",
-      "args": ["serve", "examples/git-tools.yaml"]
+      "args": ["serve", "examples/git-tools.yaml"],
     },
     // HTTP variant — start first: teukhos serve examples/git-tools.yaml -t http -p 8770
     "git-tools-http": {

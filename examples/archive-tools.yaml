@@ -8,7 +8,7 @@ server:
 
 tools:
   - name: ping
-    description: "Health check — returns server name and version"
+    description: "Health check - returns server name and version"
     adapter: cli
     cli:
       command: python

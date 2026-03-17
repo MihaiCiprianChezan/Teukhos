@@ -141,16 +141,13 @@ class TestHTTPServers:
     def http_servers(self):
         """Start all HTTP servers, yield, then stop them."""
         processes: list[tuple[str, int, subprocess.Popen]] = []
-        venv_python = str(Path(__file__).parent.parent / ".venv" / "Scripts" / "python.exe")
-        if not Path(venv_python).exists():
-            venv_python = str(Path(__file__).parent.parent / ".venv" / "bin" / "python")
 
         for name, port in HTTP_SERVERS:
             yaml_path = EXAMPLES_DIR / f"{name}.yaml"
             if not yaml_path.exists():
                 continue
             proc = subprocess.Popen(
-                [venv_python, "-m", "teukhos.cli", "serve", str(yaml_path), "-t", "http", "-p", str(port)],
+                [sys.executable, "-m", "teukhos.cli", "serve", str(yaml_path), "-t", "http", "-p", str(port)],
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 cwd=str(Path(__file__).parent.parent),

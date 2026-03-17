@@ -35,31 +35,3 @@ jobs:
           teukhos validate examples/git-tools.yaml
           teukhos validate examples/dev-tools.yaml
           teukhos validate examples/media-tools.yaml
-
-  test-prerelease:
-    runs-on: ubuntu-latest
-    continue-on-error: true
-    name: "test (3.15-dev — experimental)"
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Python 3.15 (pre-release)
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.15-dev"
-          allow-prereleases: true
-
-      - name: Install dependencies
-        run: |
-          pip install -e ".[dev]"
-
-      - name: Run tests
-        run: |
-          pytest tests/ -v
-
-      - name: Validate example configs
-        run: |
-          teukhos validate examples/git-tools.yaml
-          teukhos validate examples/dev-tools.yaml
-          teukhos validate examples/media-tools.yaml

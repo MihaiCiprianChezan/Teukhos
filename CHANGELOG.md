@@ -5,7 +5,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
-## [0.3.2] — 2026-03-17
+## [0.3.3] — 2026-03-17
+
+### Added
+- **Auth middleware wired into FastMCP** — `AuthMiddleware` now protects HTTP `/mcp` endpoint via `mcp.run(middleware=[...])`. Bearer token validation is fully functional for HTTP transport.
+- **CORS middleware wired into FastMCP** — `cors_origins` config option now applies Starlette `CORSMiddleware` with MCP-specific headers (`mcp-protocol-version`, `mcp-session-id`, `Authorization`).
 
 ### Fixed
 - `__version__` now reads from `pyproject.toml` via `importlib.metadata` — single source of truth

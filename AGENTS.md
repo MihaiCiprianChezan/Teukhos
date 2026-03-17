@@ -5,6 +5,7 @@
 - Simple error handling—Just log with traceback
 - Intelligent complexity—Use it when needed, not for its own sake
 - Simple, Direct, No unnecessary complexity, Respects the reader's intelligence
+- README.md and CHANGELOG.md should be always be updated when the code is changed.
 
 ## Core Principles
 

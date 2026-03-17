@@ -112,14 +112,42 @@ def serve(
     bundle = build_server(forge_config)
     mcp = bundle.mcp
 
-    # TODO: wire bundle.resolved_auth_keys and bundle.cors_origins into FastMCP middleware
-    # when FastMCP 3.x exposes a clean middleware injection API.
-
     if forge_config.server.transport == TransportType.http:
+        from starlette.middleware import Middleware
+        from starlette.middleware.cors import CORSMiddleware
+
+        from teukhos.auth import AuthMiddleware
+
+        middleware: list[Middleware] = []
+
+        # Wire auth middleware if keys are configured
+        if bundle.resolved_auth_keys:
+            middleware.append(
+                Middleware(AuthMiddleware, api_keys=bundle.resolved_auth_keys)
+            )
+
+        # Wire CORS middleware if origins are configured
+        if bundle.cors_origins:
+            middleware.append(
+                Middleware(
+                    CORSMiddleware,
+                    allow_origins=bundle.cors_origins,
+                    allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
+                    allow_headers=[
+                        "mcp-protocol-version",
+                        "mcp-session-id",
+                        "Authorization",
+                        "Content-Type",
+                    ],
+                    expose_headers=["mcp-session-id"],
+                )
+            )
+
         mcp.run(
             transport="streamable-http",
             host=forge_config.server.host,
             port=forge_config.server.port,
+            middleware=middleware or None,
         )
     else:
         mcp.run(transport="stdio")

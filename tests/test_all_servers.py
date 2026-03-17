@@ -7,6 +7,7 @@ Catches concurrency issues, transport bugs, and server startup failures.
 from __future__ import annotations
 
 import asyncio
+import os
 import subprocess
 import sys
 import time
@@ -134,6 +135,10 @@ class TestStdioServers:
 # HTTP tests — spawn real HTTP servers and test via httpx
 # ---------------------------------------------------------------------------
 
+@pytest.mark.skipif(
+    "CI" in os.environ,
+    reason="HTTP subprocess tests are for local use — stdio tests cover the same MCP logic in CI",
+)
 class TestHTTPServers:
     """Spawn HTTP servers as subprocesses and test via real HTTP requests."""
 

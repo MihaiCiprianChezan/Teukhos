@@ -533,9 +533,7 @@ class TestCliTimeoutWiring:
 
 class TestRunHelp:
     def test_real_binary_returns_output(self):
-        """run_help with python --version should return output."""
-        output = run_help(sys.executable, ["--version".replace("--help", "")], timeout=10)
-        # python --help (the function appends --help) returns usage info
+        """run_help with a real binary returns non-empty help text."""
         result = run_help(sys.executable, [], timeout=10)
         assert result is not None
         assert len(result) > 0
@@ -546,16 +544,6 @@ class TestRunHelp:
 
     def test_timeout_returns_none(self):
         """A command that exceeds timeout should return None."""
-        # Use a Python sleep that takes longer than the timeout
-        result = run_help(
-            sys.executable,
-            ["-c", "import time; time.sleep(10)"],
-            timeout=1,
-        )
-        # run_help appends --help, so the actual command is:
-        # python -c "import time; time.sleep(10)" --help
-        # This will either timeout or fail — either way, we handle it
-        # Let's use a more reliable approach: mock subprocess.run to raise
         with patch("teukhos.discover.subprocess.run", side_effect=subprocess.TimeoutExpired("cmd", 1)):
             result = run_help("any-binary", timeout=1)
         assert result is None

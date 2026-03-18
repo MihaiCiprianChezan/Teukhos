@@ -6,7 +6,7 @@ import keyword
 import re
 import subprocess
 from dataclasses import dataclass, field
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 
 import yaml
 from rich.console import Console
@@ -346,7 +346,7 @@ def discover_binary(
                        (e.g. ["vm"] for "az vm ...").
         timeout: Timeout in seconds for each --help subprocess call (default 15).
     """
-    binary_name = Path(binary_path).stem.lower().replace(" ", "-")
+    binary_name = PureWindowsPath(binary_path).stem.lower().replace(" ", "-")
 
     # If filter_prefix is set, start from that subtree
     start_args = filter_prefix or []

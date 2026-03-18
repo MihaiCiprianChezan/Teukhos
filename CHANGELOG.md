@@ -5,6 +5,44 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [0.3.8] — 2026-03-18
+
+### Fixed
+- Leaf-command description extraction no longer picks up `Usage:` lines — uses shared `_extract_description()` helper
+- `--timeout` now controls discovery subprocess calls too, not just the generated YAML `timeout_seconds`
+- `--timeout 0` no longer silently falls back to default (proper `is not None` check)
+- Duplicate commands in `parse_commands()` when CLIs list the same command in multiple sections (e.g. gh)
+- README recipe section clarified: default output is `<binary-name>.yaml`, not `teukhos.yaml`
+
+### Added
+- 28 unit tests for `teukhos/discover.py` — covers `_extract_description`, `parse_commands`, `parse_options`, `parse_positional_args`, and `generate_yaml`
+
+### Changed
+- Extracted `_extract_description()` as a shared helper, replacing duplicated logic in `discover_binary()`
+
+---
+
+## [0.3.7] — 2026-03-18
+
+### Added
+- **`teukhos discover <binary>`** — auto-generate `teukhos.yaml` configs by recursively parsing `--help` output
+  (contributed by [@exalsch](https://github.com/exalsch))
+- Supports GNU-style, .NET System.CommandLine, Azure CLI, and gh/cobra help formats
+- `--max-depth` and `--filter` options to scope discovery for large CLIs
+- `--dry-run` for syntax-highlighted YAML preview without writing a file
+- `--timeout` option for slow CLI tools (e.g. COM-based OutlookCLI)
+- Python reserved keyword collision handling (`--from` becomes `from_value`)
+
+### Fixed
+- Unused `traceback` import removed from `discover.py`
+- `_PYTHON_RESERVED` comment corrected (was "keywords and builtins", only had keywords)
+- Top-level description extraction no longer picks up `Usage:` lines
+- `--timeout 0` no longer silently dropped in generated YAML
+- `OSError` handling added for file write in discover command
+- Help text for `--output` option corrected to match actual default filename
+
+---
+
 ## [0.3.6] — 2026-03-17
 
 ### Changed

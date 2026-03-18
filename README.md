@@ -98,7 +98,7 @@ teukhos uninstall <server-name>   Remove from MCP client(s)
 teukhos clients                   List supported clients & detection status
 teukhos wait-ready                Poll /health until ready — use in CI
 teukhos version                   Print version
-teukhos discover <binary>         (Coming soon) Auto-generate config from --help
+teukhos discover <binary>         Auto-generate config from --help
 ```
 
 **Options for `serve`:**
@@ -123,6 +123,15 @@ teukhos discover <binary>         (Coming soon) Auto-generate config from --help
 --client  -c    Target a specific client by slug
 --all           Remove from all detected clients
 --project       Target project-level config
+```
+
+**Options for `discover`:**
+```
+--output     -o    Output file path (default: <binary-name>.yaml)
+--dry-run          Print generated YAML to stdout instead of writing a file
+--max-depth  -d    Max recursion depth for subcommands (default: 2)
+--timeout    -t    Timeout in seconds for discovery commands
+--filter     -f    Only discover subcommands under this prefix (e.g. "vm" for "az vm")
 ```
 
 **Config file names:** Teukhos looks for `teukhos.yaml` by default. Legacy `mcp-forge.yaml` is accepted automatically with a deprecation note.
@@ -653,6 +662,26 @@ teukhos uninstall teukhos-git-tools --client claude-code --project
 teukhos uninstall teukhos-git-tools --all
 ```
 
+### Discover Tools from a Binary
+
+```bash
+# Auto-generate a <binary-name>.yaml (e.g., my-tool.yaml) from any CLI binary
+teukhos discover my-tool.exe
+
+# Preview without writing a file
+teukhos discover my-tool --dry-run
+
+# Scope to a subtree for large CLIs (e.g., Azure CLI)
+teukhos discover az.cmd --filter vm
+
+# Limit recursion depth
+teukhos discover az.cmd --filter vm --max-depth 1
+
+# Discover, then install in one flow
+teukhos discover my-tool -o my-tool.yaml
+teukhos install my-tool.yaml --client claude-desktop
+```
+
 ### List & Discover
 
 ```bash
@@ -704,12 +733,12 @@ teukhos install --client cursor --url http://localhost:8765/mcp
 - Cross-platform example configs (Windows, Linux, macOS)
 - Ping health check tool on all example servers
 - Comprehensive integration test suite (62 tests across 20 servers)
+- `teukhos discover <binary>` — auto-generate config from `--help` with `--max-depth`, `--filter`, and `--timeout` options
 
 ### v0.4 — Production Ready
 - `rest` adapter (wrap any HTTP endpoint)
 - `shell` adapter (inline bash/pwsh scripts)
 - Hot reload — save YAML, tools update without restart
-- `teukhos discover <binary>` — AI-powered config generation from `--help`
 - Streaming output support
 - Lock file (`teukhos.lock`) for reproducible deployments
 

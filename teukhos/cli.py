@@ -542,11 +542,59 @@ def clients() -> None:
 
 @app.command()
 def discover(
-    binary: Annotated[str, typer.Argument(help="Binary to discover tools from")],
+    binary: Annotated[str, typer.Argument(help="Path or name of binary to discover tools from")],
+    output: Annotated[
+        Optional[str], typer.Option("--output", "-o", help="Output file path (default: {result.binary_name}.yaml)")
+    ] = None,
+    dry_run: Annotated[
+        bool, typer.Option("--dry-run", help="Print generated YAML to stdout instead of writing a file")
+    ] = False,
+    max_depth: Annotated[
+        int, typer.Option("--max-depth", "-d", help="Max recursion depth for subcommands (default: 2)")
+    ] = 2,
+    filter_prefix: Annotated[
+        Optional[str], typer.Option("--filter", "-f", help="Only discover subcommands under this prefix (e.g. 'vm' for 'az vm')")
+    ] = None,
+    timeout: Annotated[
+        Optional[int], typer.Option("--timeout", "-t", help="Timeout in seconds for each tool execution (default: 30)")
+    ] = None,
 ) -> None:
-    """(Coming soon) Auto-generate a teukhos.yaml from a binary's --help output."""
-    console.print(f"[yellow]discover is not yet implemented.[/] Binary: {binary}")
-    console.print("This will be available in a future version with AI-powered tool import.")
+    """Auto-generate a teukhos.yaml from a binary's --help output."""
+    import traceback
+
+    from teukhos.discover import discover_binary, generate_yaml
+
+    console.print(f"[bold]Discovering tools from:[/] {binary}")
+
+    try:
+        prefix = filter_prefix.split() if filter_prefix else None
+        result = discover_binary(binary, max_depth=max_depth, filter_prefix=prefix)
+    except Exception as e:
+        console.print(f"[bold red]Error:[/] {e}\n{traceback.format_exc()}")
+        raise typer.Exit(1)
+
+    if not result.tools:
+        console.print("[yellow]No tools discovered.[/]")
+        raise typer.Exit(1)
+
+    yaml_content = generate_yaml(result, timeout=timeout)
+
+    if dry_run:
+        from rich.syntax import Syntax
+        console.print()
+        console.print(Syntax(yaml_content, "yaml", theme="monokai"))
+    else:
+        out_path = Path(output) if output else Path(f"{result.binary_name}.yaml")
+        try:
+            # Ensure parent directory exists (handles e.g. custom --output paths)
+            out_path.parent.mkdir(parents=True, exist_ok=True)
+            out_path.write_text(yaml_content, encoding="utf-8")
+        except OSError as e:
+            console.print(f"[bold red]Error writing output file:[/] {out_path} — {e}")
+            raise typer.Exit(1)
+        console.print(f"\n[bold green]Generated![/] {out_path.resolve()}")
+
+    console.print(f"[dim]{len(result.tools)} tool(s) discovered.[/]")
 
 
 def _print_banner(config: object) -> None:

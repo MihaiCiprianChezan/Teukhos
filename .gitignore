@@ -123,3 +123,7 @@ DEPLOY.md
 
 scripts/.http-servers.pids
 stderr.log
+
+# Claude Code
+.claude/
+CLAUDE.md

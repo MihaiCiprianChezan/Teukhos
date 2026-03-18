@@ -304,7 +304,7 @@ class TestGenerateYaml:
         result = self._make_result(tools=[
             DiscoveredCommand(name="cmd", subcommands=["cmd"]),
         ])
-        yaml_str = generate_yaml(result, timeout=60)
+        yaml_str = generate_yaml(result, exec_timeout=60)
         config = yaml.safe_load(yaml_str)
         assert config["tools"][0]["cli"]["timeout_seconds"] == 60
 
@@ -313,7 +313,7 @@ class TestGenerateYaml:
         result = self._make_result(tools=[
             DiscoveredCommand(name="cmd", subcommands=["cmd"]),
         ])
-        yaml_str = generate_yaml(result, timeout=0)
+        yaml_str = generate_yaml(result, exec_timeout=0)
         config = yaml.safe_load(yaml_str)
         assert config["tools"][0]["cli"]["timeout_seconds"] == 0
 
@@ -321,7 +321,7 @@ class TestGenerateYaml:
         result = self._make_result(tools=[
             DiscoveredCommand(name="cmd", subcommands=["cmd"]),
         ])
-        yaml_str = generate_yaml(result, timeout=None)
+        yaml_str = generate_yaml(result, exec_timeout=None)
         config = yaml.safe_load(yaml_str)
         assert "timeout_seconds" not in config["tools"][0]["cli"]
 
@@ -358,3 +358,35 @@ class TestGenerateYaml:
         yaml_str = generate_yaml(result)
         config = yaml.safe_load(yaml_str)
         assert config["tools"][0]["args"][0]["default"] == 8080
+
+
+# ---------------------------------------------------------------------------
+# CLI wiring: --timeout vs --exec-timeout
+# ---------------------------------------------------------------------------
+
+class TestCliTimeoutWiring:
+    """Ensure --timeout only affects discovery and --exec-timeout only affects YAML."""
+
+    def _make_result(self):
+        return DiscoveryResult(
+            binary="my-tool", binary_name="my-tool", description="test",
+            tools=[DiscoveredCommand(name="cmd", subcommands=["cmd"])],
+        )
+
+    def test_exec_timeout_sets_timeout_seconds(self):
+        result = self._make_result()
+        yaml_str = generate_yaml(result, exec_timeout=120)
+        config = yaml.safe_load(yaml_str)
+        assert config["tools"][0]["cli"]["timeout_seconds"] == 120
+
+    def test_no_exec_timeout_omits_timeout_seconds(self):
+        result = self._make_result()
+        yaml_str = generate_yaml(result, exec_timeout=None)
+        config = yaml.safe_load(yaml_str)
+        assert "timeout_seconds" not in config["tools"][0]["cli"]
+
+    def test_exec_timeout_zero_is_included(self):
+        result = self._make_result()
+        yaml_str = generate_yaml(result, exec_timeout=0)
+        config = yaml.safe_load(yaml_str)
+        assert config["tools"][0]["cli"]["timeout_seconds"] == 0

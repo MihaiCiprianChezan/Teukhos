@@ -5,6 +5,19 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [0.3.9] — 2026-03-18
+
+### Added
+- **`--exec-timeout` / `-e` flag** for `teukhos discover` — sets `timeout_seconds` in generated YAML independently from discovery timeout
+- Discovery (`--timeout`) and execution (`--exec-timeout`) timeouts are now separate concerns:
+  `--timeout` controls how long each `--help` subprocess can take during discovery,
+  `--exec-timeout` controls how long generated tools are allowed to run
+
+### Changed
+- `--timeout` now only affects discovery `--help` calls (no longer also sets `timeout_seconds` in generated YAML)
+
+---
+
 ## [0.3.8] — 2026-03-18
 
 ### Fixed

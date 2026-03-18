@@ -127,11 +127,12 @@ teukhos discover <binary>         Auto-generate config from --help
 
 **Options for `discover`:**
 ```
---output     -o    Output file path (default: <binary-name>.yaml)
---dry-run          Print generated YAML to stdout instead of writing a file
---max-depth  -d    Max recursion depth for subcommands (default: 2)
---timeout    -t    Timeout in seconds for discovery commands
---filter     -f    Only discover subcommands under this prefix (e.g. "vm" for "az vm")
+--output        -o    Output file path (default: <binary-name>.yaml)
+--dry-run             Print generated YAML to stdout instead of writing a file
+--max-depth     -d    Max recursion depth for subcommands (default: 2)
+--timeout       -t    Timeout in seconds for each --help call during discovery (default: 15)
+--exec-timeout  -e    Timeout in seconds for tool execution; sets timeout_seconds in generated YAML
+--filter        -f    Only discover subcommands under this prefix (e.g. "vm" for "az vm")
 ```
 
 **Config file names:** Teukhos looks for `teukhos.yaml` by default. Legacy `mcp-forge.yaml` is accepted automatically with a deprecation note.

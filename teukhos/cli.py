@@ -556,7 +556,7 @@ def discover(
         Optional[str], typer.Option("--filter", "-f", help="Only discover subcommands under this prefix (e.g. 'vm' for 'az vm')")
     ] = None,
     timeout: Annotated[
-        Optional[int], typer.Option("--timeout", "-t", help="Timeout in seconds for each tool execution (default: 30)")
+        Optional[int], typer.Option("--timeout", "-t", help="Timeout in seconds for --help calls during discovery; also sets timeout_seconds in generated YAML if provided")
     ] = None,
 ) -> None:
     """Auto-generate a teukhos.yaml from a binary's --help output."""
@@ -568,7 +568,10 @@ def discover(
 
     try:
         prefix = filter_prefix.split() if filter_prefix else None
-        result = discover_binary(binary, max_depth=max_depth, filter_prefix=prefix)
+        result = discover_binary(
+            binary, max_depth=max_depth, filter_prefix=prefix,
+            **({"timeout": timeout} if timeout is not None else {}),
+        )
     except Exception as e:
         console.print(f"[bold red]Error:[/] {e}\n{traceback.format_exc()}")
         raise typer.Exit(1)

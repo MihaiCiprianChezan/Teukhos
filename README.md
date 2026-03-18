@@ -665,7 +665,7 @@ teukhos uninstall teukhos-git-tools --all
 ### Discover Tools from a Binary
 
 ```bash
-# Auto-generate a <binary-name>.yaml (e.g., my-tool.yaml) from any CLI binary
+# Auto-generate a config (writes <binary-name>.yaml by default, e.g., my-tool.yaml)
 teukhos discover my-tool.exe
 
 # Preview without writing a file
@@ -801,6 +801,12 @@ The test suite covers:
 - **Integration tests** — all 11 example configs: ping, tool listing, schema validation, concurrency
 
 Pull requests welcome.
+
+---
+
+## Contributors
+
+[![Contributors](https://contrib.rocks/image?repo=MihaiCiprianChezan/Teukhos)](https://github.com/MihaiCiprianChezan/Teukhos/graphs/contributors)
 
 ---
 

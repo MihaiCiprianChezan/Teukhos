@@ -47,12 +47,12 @@ class DiscoveryResult:
     tools: list[DiscoveredCommand] = field(default_factory=list)
 
 
-def run_help(binary: str, args: list[str] | None = None) -> str | None:
+def run_help(binary: str, args: list[str] | None = None, timeout: int = 15) -> str | None:
     """Run binary with --help and capture stdout+stderr."""
     cmd = [binary] + (args or []) + ["--help"]
     try:
         result = subprocess.run(
-            cmd, capture_output=True, text=True, timeout=15,
+            cmd, capture_output=True, text=True, timeout=timeout,
         )
         output = result.stdout or result.stderr
         return output.strip() if output else None
@@ -78,6 +78,7 @@ def parse_commands(help_text: str) -> list[tuple[str, str]]:
         [('init', 'Initialize the repository'), ('status', 'Show the current status')]
     """
     commands: list[tuple[str, str]] = []
+    seen: set[str] = set()
     in_commands = False
     for line in help_text.splitlines():
         stripped = line.strip()
@@ -117,7 +118,9 @@ def parse_commands(help_text: str) -> list[tuple[str, str]]:
                 cmd_part = match.group(1).strip()
                 desc = match.group(2).strip()
                 cmd_name = cmd_part.split()[0]
-                commands.append((cmd_name, desc))
+                if cmd_name not in seen:
+                    seen.add(cmd_name)
+                    commands.append((cmd_name, desc))
     return commands
 
 
@@ -273,32 +276,13 @@ def parse_positional_args(help_text: str) -> list[DiscoveredArg]:
     return positionals
 
 
-def discover_binary(
-    binary_path: str,
-    max_depth: int = 2,
-    filter_prefix: list[str] | None = None,
-) -> DiscoveryResult:
-    """Discover all tools from a binary by recursively parsing --help output.
+def _extract_description(help_text: str) -> str:
+    """Extract a human-friendly description from --help output.
 
-    Args:
-        binary_path: Path or name of the binary.
-        max_depth: Maximum recursion depth for subcommands (default 2).
-        filter_prefix: Only discover subcommands under this prefix path
-                       (e.g. ["vm"] for "az vm ...").
+    Prefers the body under a "Description:" section when present; otherwise,
+    uses the first non-empty line that isn't a common header like "Usage:".
     """
-    binary_name = Path(binary_path).stem.lower().replace(" ", "-")
-
-    # If filter_prefix is set, start from that subtree
-    start_args = filter_prefix or []
-    top_help = run_help(binary_path, start_args if start_args else None)
-    if not top_help:
-        raise RuntimeError(f"Could not get --help output from: {binary_path}")
-
-    # Extract a human-friendly description from the top-level --help output.
-    # Prefer the body under a "Description:" section when present; otherwise,
-    # use the first non-empty line that isn't a common header like "Usage:".
-    description = ""
-    lines = top_help.splitlines()
+    lines = help_text.splitlines()
 
     # 1) Look for an explicit "Description:" section and take the text under it.
     for i, line in enumerate(lines):
@@ -308,38 +292,69 @@ def discover_binary(
             for follow in lines[i + 1 :]:
                 follow_stripped = follow.strip()
                 if not follow_stripped:
-                    # Stop at a blank line; most CLIs separate sections this way.
                     break
                 lower = follow_stripped.lower()
-                # Stop if we hit another obvious section header.
                 if lower.startswith(("usage", "options", "commands", "subcommands", "arguments")):
                     break
                 desc_lines.append(follow_stripped)
-            description = " ".join(desc_lines).strip()
-            break
+            result = " ".join(desc_lines).strip()
+            if result:
+                return result
 
     # 2) Fallback: first non-empty line that isn't a common header.
-    if not description:
-        skip_prefixes = (
-            "usage",
-            "options",
-            "available commands",
-            "commands",
-            "subcommands",
-            "arguments",
-            "positional arguments",
-            "group",
-        )
-        for line in lines:
-            stripped = line.strip()
-            if not stripped:
-                continue
-            lower = stripped.lower()
-            # Skip generic section headers (with or without trailing colon).
-            if any(lower.startswith(p + ":") or lower.startswith(p) for p in skip_prefixes):
-                continue
-            description = stripped
+    #    "Skip" headers like Usage: that are single lines.
+    #    "Stop" at section headers that contain structured content (commands,
+    #    options, arguments) — anything indented after them is not a description.
+    skip_prefixes = ("usage", "group")
+    stop_prefixes = (
+        "options",
+        "available commands",
+        "commands",
+        "subcommands",
+        "arguments",
+        "positional arguments",
+    )
+    for line in lines:
+        stripped = line.strip()
+        if not stripped:
+            continue
+        lower = stripped.lower()
+        if any(lower.startswith(p + ":") or lower == p for p in stop_prefixes):
             break
+        # Also stop on multi-word command section headers like "CORE COMMANDS"
+        if re.match(r"^[\w\s]*commands?\s*$", lower):
+            break
+        if any(lower.startswith(p + ":") or lower == p for p in skip_prefixes):
+            continue
+        return stripped
+
+    return ""
+
+
+def discover_binary(
+    binary_path: str,
+    max_depth: int = 2,
+    filter_prefix: list[str] | None = None,
+    timeout: int = 15,
+) -> DiscoveryResult:
+    """Discover all tools from a binary by recursively parsing --help output.
+
+    Args:
+        binary_path: Path or name of the binary.
+        max_depth: Maximum recursion depth for subcommands (default 2).
+        filter_prefix: Only discover subcommands under this prefix path
+                       (e.g. ["vm"] for "az vm ...").
+        timeout: Timeout in seconds for each --help subprocess call (default 15).
+    """
+    binary_name = Path(binary_path).stem.lower().replace(" ", "-")
+
+    # If filter_prefix is set, start from that subtree
+    start_args = filter_prefix or []
+    top_help = run_help(binary_path, start_args if start_args else None, timeout=timeout)
+    if not top_help:
+        raise RuntimeError(f"Could not get --help output from: {binary_path}")
+
+    description = _extract_description(top_help)
 
     result = DiscoveryResult(
         binary=binary_path,
@@ -356,7 +371,7 @@ def discover_binary(
                 full_path = cmd_path + [cmd_name]
                 label = " ".join(full_path)
                 console.print(f"[dim]  Discovering: {label}...[/]")
-                sub_help = run_help(binary_path, full_path)
+                sub_help = run_help(binary_path, full_path, timeout=timeout)
                 if not sub_help:
                     continue
                 # Recurse deeper
@@ -367,7 +382,7 @@ def discover_binary(
                 full_path = cmd_path + [cmd_name]
                 label = " ".join(full_path)
                 console.print(f"[dim]  Discovering: {label}...[/]")
-                sub_help = run_help(binary_path, full_path)
+                sub_help = run_help(binary_path, full_path, timeout=timeout)
                 if not sub_help:
                     continue
                 tool_name = "_".join(full_path).replace("-", "_")
@@ -382,15 +397,7 @@ def discover_binary(
             # Leaf command — no subcommands
             if cmd_path:
                 tool_name = "_".join(cmd_path).replace("-", "_")
-                # Re-extract description from help text if available
-                leaf_desc = ""
-                for line in help_text.splitlines():
-                    s = line.strip()
-                    if s.lower().startswith(("description:", "command", "group")):
-                        continue
-                    if s and not leaf_desc:
-                        leaf_desc = s
-                        break
+                leaf_desc = _extract_description(help_text)
                 result.tools.append(DiscoveredCommand(
                     name=tool_name,
                     description=leaf_desc or description,

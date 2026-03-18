@@ -309,7 +309,7 @@ class TestGenerateYaml:
         assert config["tools"][0]["cli"]["timeout_seconds"] == 60
 
     def test_timeout_zero_is_included(self):
-        """--timeout 0 should not be silently dropped."""
+        """--exec-timeout 0 should not be silently dropped."""
         result = self._make_result(tools=[
             DiscoveredCommand(name="cmd", subcommands=["cmd"]),
         ])
@@ -361,32 +361,98 @@ class TestGenerateYaml:
 
 
 # ---------------------------------------------------------------------------
-# CLI wiring: --timeout vs --exec-timeout
+# CLI wiring: --timeout vs --exec-timeout (real CLI integration tests)
 # ---------------------------------------------------------------------------
 
 class TestCliTimeoutWiring:
-    """Ensure --timeout only affects discovery and --exec-timeout only affects YAML."""
+    """Invoke the real Typer CLI and verify --timeout goes to discovery,
+    --exec-timeout goes to generated YAML."""
 
-    def _make_result(self):
+    @staticmethod
+    def _fake_result():
         return DiscoveryResult(
             binary="my-tool", binary_name="my-tool", description="test",
             tools=[DiscoveredCommand(name="cmd", subcommands=["cmd"])],
         )
 
-    def test_exec_timeout_sets_timeout_seconds(self):
-        result = self._make_result()
-        yaml_str = generate_yaml(result, exec_timeout=120)
-        config = yaml.safe_load(yaml_str)
-        assert config["tools"][0]["cli"]["timeout_seconds"] == 120
+    def test_timeout_passed_to_discover_binary(self, monkeypatch, tmp_path):
+        """--timeout value reaches discover_binary, not generate_yaml."""
+        from typer.testing import CliRunner
+        from teukhos.cli import app
 
-    def test_no_exec_timeout_omits_timeout_seconds(self):
-        result = self._make_result()
-        yaml_str = generate_yaml(result, exec_timeout=None)
-        config = yaml.safe_load(yaml_str)
-        assert "timeout_seconds" not in config["tools"][0]["cli"]
+        captured = {}
 
-    def test_exec_timeout_zero_is_included(self):
-        result = self._make_result()
-        yaml_str = generate_yaml(result, exec_timeout=0)
-        config = yaml.safe_load(yaml_str)
-        assert config["tools"][0]["cli"]["timeout_seconds"] == 0
+        def fake_discover(binary, *, max_depth=2, filter_prefix=None, timeout=15):
+            captured["timeout"] = timeout
+            return self._fake_result()
+
+        monkeypatch.setattr("teukhos.discover.discover_binary", fake_discover)
+        monkeypatch.setattr("teukhos.discover.generate_yaml", lambda r, **kw: "forge: {}\ntools: []\n")
+
+        runner = CliRunner()
+        result = runner.invoke(app, ["discover", "my-tool", "--timeout", "30", "--dry-run"])
+        assert result.exit_code == 0
+        assert captured["timeout"] == 30
+
+    def test_exec_timeout_passed_to_generate_yaml(self, monkeypatch, tmp_path):
+        """--exec-timeout value reaches generate_yaml as exec_timeout."""
+        from typer.testing import CliRunner
+        from teukhos.cli import app
+
+        captured = {}
+
+        def fake_discover(binary, *, max_depth=2, filter_prefix=None, timeout=15):
+            return self._fake_result()
+
+        def fake_generate(result, *, exec_timeout=None):
+            captured["exec_timeout"] = exec_timeout
+            return "forge: {}\ntools: []\n"
+
+        monkeypatch.setattr("teukhos.discover.discover_binary", fake_discover)
+        monkeypatch.setattr("teukhos.discover.generate_yaml", fake_generate)
+
+        runner = CliRunner()
+        result = runner.invoke(app, ["discover", "my-tool", "--exec-timeout", "120", "--dry-run"])
+        assert result.exit_code == 0
+        assert captured["exec_timeout"] == 120
+
+    def test_timeout_does_not_leak_into_yaml(self, monkeypatch, tmp_path):
+        """--timeout alone should not set exec_timeout in generate_yaml."""
+        from typer.testing import CliRunner
+        from teukhos.cli import app
+
+        captured = {}
+
+        def fake_discover(binary, *, max_depth=2, filter_prefix=None, timeout=15):
+            return self._fake_result()
+
+        def fake_generate(result, *, exec_timeout=None):
+            captured["exec_timeout"] = exec_timeout
+            return "forge: {}\ntools: []\n"
+
+        monkeypatch.setattr("teukhos.discover.discover_binary", fake_discover)
+        monkeypatch.setattr("teukhos.discover.generate_yaml", fake_generate)
+
+        runner = CliRunner()
+        result = runner.invoke(app, ["discover", "my-tool", "--timeout", "30", "--dry-run"])
+        assert result.exit_code == 0
+        assert captured["exec_timeout"] is None
+
+    def test_default_timeout_is_15(self, monkeypatch, tmp_path):
+        """Omitting --timeout should pass 15 to discover_binary."""
+        from typer.testing import CliRunner
+        from teukhos.cli import app
+
+        captured = {}
+
+        def fake_discover(binary, *, max_depth=2, filter_prefix=None, timeout=15):
+            captured["timeout"] = timeout
+            return self._fake_result()
+
+        monkeypatch.setattr("teukhos.discover.discover_binary", fake_discover)
+        monkeypatch.setattr("teukhos.discover.generate_yaml", lambda r, **kw: "forge: {}\ntools: []\n")
+
+        runner = CliRunner()
+        result = runner.invoke(app, ["discover", "my-tool", "--dry-run"])
+        assert result.exit_code == 0
+        assert captured["timeout"] == 15

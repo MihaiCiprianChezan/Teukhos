@@ -1,7 +1,11 @@
 """Tests for the discover module — parsing --help output and generating YAML."""
 
+import subprocess
+import sys
 import textwrap
+from unittest.mock import patch
 
+import pytest
 import yaml
 
 from teukhos.discover import (
@@ -9,10 +13,12 @@ from teukhos.discover import (
     DiscoveredCommand,
     DiscoveryResult,
     _extract_description,
+    discover_binary,
     generate_yaml,
     parse_commands,
     parse_options,
     parse_positional_args,
+    run_help,
 )
 
 
@@ -443,9 +449,10 @@ class TestCliTimeoutWiring:
         from typer.testing import CliRunner
         from teukhos.cli import app
 
+        _SENTINEL = object()
         captured = {}
 
-        def fake_discover(binary, *, max_depth=2, filter_prefix=None, timeout=15):
+        def fake_discover(binary, *, max_depth=2, filter_prefix=None, timeout=_SENTINEL):
             captured["timeout"] = timeout
             return self._fake_result()
 
@@ -456,3 +463,333 @@ class TestCliTimeoutWiring:
         result = runner.invoke(app, ["discover", "my-tool", "--dry-run"])
         assert result.exit_code == 0
         assert captured["timeout"] == 15
+
+    def test_cli_filter_passed_to_discover(self, monkeypatch):
+        """--filter splits into a list and reaches discover_binary as filter_prefix."""
+        from typer.testing import CliRunner
+        from teukhos.cli import app
+
+        captured = {}
+
+        def fake_discover(binary, *, max_depth=2, filter_prefix=None, timeout=15):
+            captured["filter_prefix"] = filter_prefix
+            return self._fake_result()
+
+        monkeypatch.setattr("teukhos.discover.discover_binary", fake_discover)
+        monkeypatch.setattr("teukhos.discover.generate_yaml", lambda r, **kw: "forge: {}\ntools: []\n")
+
+        runner = CliRunner()
+        result = runner.invoke(app, ["discover", "my-tool", "--filter", "vm list", "--dry-run"])
+        assert result.exit_code == 0
+        assert captured["filter_prefix"] == ["vm", "list"]
+
+    def test_cli_output_writes_file(self, monkeypatch, tmp_path):
+        """--output writes YAML to the specified file."""
+        from typer.testing import CliRunner
+        from teukhos.cli import app
+
+        monkeypatch.setattr("teukhos.discover.discover_binary", lambda *a, **kw: self._fake_result())
+        monkeypatch.setattr("teukhos.discover.generate_yaml", lambda r, **kw: "forge: {name: test}\ntools: []\n")
+
+        out_file = tmp_path / "out.yaml"
+        runner = CliRunner()
+        result = runner.invoke(app, ["discover", "my-tool", "--output", str(out_file)])
+        assert result.exit_code == 0
+        assert out_file.exists()
+        assert "forge:" in out_file.read_text()
+
+    def test_cli_discover_binary_error_exits_1(self, monkeypatch):
+        """When discover_binary raises, CLI prints error and exits 1."""
+        from typer.testing import CliRunner
+        from teukhos.cli import app
+
+        def exploding_discover(*a, **kw):
+            raise RuntimeError("No --help output")
+
+        monkeypatch.setattr("teukhos.discover.discover_binary", exploding_discover)
+
+        runner = CliRunner()
+        result = runner.invoke(app, ["discover", "bad-binary", "--dry-run"])
+        assert result.exit_code == 1
+        assert "Error" in result.output
+
+    def test_cli_no_tools_exits_1(self, monkeypatch):
+        """When discover finds zero tools, CLI warns and exits 1."""
+        from typer.testing import CliRunner
+        from teukhos.cli import app
+
+        empty_result = DiscoveryResult(binary="x", binary_name="x", tools=[])
+        monkeypatch.setattr("teukhos.discover.discover_binary", lambda *a, **kw: empty_result)
+
+        runner = CliRunner()
+        result = runner.invoke(app, ["discover", "my-tool", "--dry-run"])
+        assert result.exit_code == 1
+        assert "No tools discovered" in result.output
+
+
+# ---------------------------------------------------------------------------
+# run_help
+# ---------------------------------------------------------------------------
+
+class TestRunHelp:
+    def test_real_binary_returns_output(self):
+        """run_help with python --version should return output."""
+        output = run_help(sys.executable, ["--version".replace("--help", "")], timeout=10)
+        # python --help (the function appends --help) returns usage info
+        result = run_help(sys.executable, [], timeout=10)
+        assert result is not None
+        assert len(result) > 0
+
+    def test_nonexistent_binary_returns_none(self):
+        result = run_help("nonexistent_binary_xyz_12345")
+        assert result is None
+
+    def test_timeout_returns_none(self):
+        """A command that exceeds timeout should return None."""
+        # Use a Python sleep that takes longer than the timeout
+        result = run_help(
+            sys.executable,
+            ["-c", "import time; time.sleep(10)"],
+            timeout=1,
+        )
+        # run_help appends --help, so the actual command is:
+        # python -c "import time; time.sleep(10)" --help
+        # This will either timeout or fail — either way, we handle it
+        # Let's use a more reliable approach: mock subprocess.run to raise
+        with patch("teukhos.discover.subprocess.run", side_effect=subprocess.TimeoutExpired("cmd", 1)):
+            result = run_help("any-binary", timeout=1)
+        assert result is None
+
+    def test_prefers_stdout_over_stderr(self):
+        """When both stdout and stderr have content, stdout wins."""
+        fake_result = subprocess.CompletedProcess(
+            args=["test"], returncode=0, stdout="stdout content", stderr="stderr content"
+        )
+        with patch("teukhos.discover.subprocess.run", return_value=fake_result):
+            result = run_help("test-binary")
+        assert result == "stdout content"
+
+    def test_falls_back_to_stderr(self):
+        """When stdout is empty, stderr is used."""
+        fake_result = subprocess.CompletedProcess(
+            args=["test"], returncode=0, stdout="", stderr="stderr content"
+        )
+        with patch("teukhos.discover.subprocess.run", return_value=fake_result):
+            result = run_help("test-binary")
+        assert result == "stderr content"
+
+    def test_empty_output_returns_none(self):
+        fake_result = subprocess.CompletedProcess(
+            args=["test"], returncode=0, stdout="", stderr=""
+        )
+        with patch("teukhos.discover.subprocess.run", return_value=fake_result):
+            result = run_help("test-binary")
+        assert result is None
+
+
+# ---------------------------------------------------------------------------
+# discover_binary
+# ---------------------------------------------------------------------------
+
+class TestDiscoverBinary:
+    SIMPLE_HELP = textwrap.dedent("""\
+        Usage: my-tool [OPTIONS] COMMAND
+
+        A simple test tool.
+
+        Commands:
+          init        Initialize the project
+          build       Build the project
+
+        Options:
+          --help  Show help
+    """)
+
+    LEAF_HELP = textwrap.dedent("""\
+        Usage: my-tool init [OPTIONS]
+
+        Initialize the project.
+
+        Options:
+          -f, --force           Force reinit
+          --help                Show help
+    """)
+
+    BUILD_HELP = textwrap.dedent("""\
+        Usage: my-tool build [OPTIONS]
+
+        Build the project.
+
+        Options:
+          --target <TARGET>     Build target
+          --help                Show help
+    """)
+
+    def _mock_run_help(self, binary, args=None, timeout=15):
+        """Return canned help text based on the args."""
+        if args is None or args == []:
+            return self.SIMPLE_HELP
+        if args == ["init"]:
+            return self.LEAF_HELP
+        if args == ["build"]:
+            return self.BUILD_HELP
+        return None
+
+    def test_discovers_leaf_commands(self):
+        """Recursion finds leaf commands and extracts their args."""
+        with patch("teukhos.discover.run_help", side_effect=self._mock_run_help):
+            result = discover_binary("my-tool", max_depth=2)
+
+        assert result.binary_name == "my-tool"
+        assert result.description == "A simple test tool."
+        assert len(result.tools) == 2
+        names = {t.name for t in result.tools}
+        assert names == {"init", "build"}
+
+        # Check init has --force arg
+        init_tool = next(t for t in result.tools if t.name == "init")
+        assert any(a.flag == "--force" for a in init_tool.args)
+
+        # Check build has --target arg
+        build_tool = next(t for t in result.tools if t.name == "build")
+        assert any(a.flag == "--target" for a in build_tool.args)
+
+    def test_no_help_output_raises_runtime_error(self):
+        with patch("teukhos.discover.run_help", return_value=None):
+            with pytest.raises(RuntimeError, match="Could not get --help output"):
+                discover_binary("broken-tool")
+
+    def test_binary_with_no_subcommands(self):
+        """A binary whose --help has no Commands section is treated as a single tool."""
+        leaf_only = textwrap.dedent("""\
+            Usage: simple-tool [OPTIONS]
+
+            A tool with no subcommands.
+
+            Options:
+              --verbose           Enable verbose output
+              --help              Show help
+        """)
+        with patch("teukhos.discover.run_help", return_value=leaf_only):
+            result = discover_binary("simple-tool")
+
+        assert len(result.tools) == 1
+        assert result.tools[0].name == "simple_tool"
+        assert result.tools[0].description == "A tool with no subcommands."
+
+    def test_max_depth_registers_as_leaves(self):
+        """At max_depth, commands with subcommands are registered as leaves."""
+        with patch("teukhos.discover.run_help", side_effect=self._mock_run_help):
+            result = discover_binary("my-tool", max_depth=0)
+
+        # At depth 0, init and build have no further subcommands in their help,
+        # but they are at max_depth so treated as leaf registrations
+        assert len(result.tools) == 2
+
+    def test_filter_prefix(self):
+        """filter_prefix starts discovery from a subtree."""
+        calls = []
+
+        def tracking_run_help(binary, args=None, timeout=15):
+            calls.append(args)
+            if args == ["init"] or args is None:
+                return self.LEAF_HELP
+            return None
+
+        with patch("teukhos.discover.run_help", side_effect=tracking_run_help):
+            result = discover_binary("my-tool", filter_prefix=["init"])
+
+        # First call should be with ["init"] (the filter prefix)
+        assert calls[0] == ["init"]
+
+    def test_timeout_forwarded_to_run_help(self):
+        """The timeout parameter is passed through to every run_help call."""
+        timeouts = []
+
+        def tracking_run_help(binary, args=None, timeout=15):
+            timeouts.append(timeout)
+            if args is None or args == []:
+                return self.SIMPLE_HELP
+            return self.LEAF_HELP
+
+        with patch("teukhos.discover.run_help", side_effect=tracking_run_help):
+            discover_binary("my-tool", timeout=42)
+
+        assert all(t == 42 for t in timeouts)
+
+    def test_skips_subcommand_when_help_fails(self):
+        """If a subcommand's --help fails, it's skipped without crashing."""
+        def selective_help(binary, args=None, timeout=15):
+            if args is None or args == []:
+                return self.SIMPLE_HELP
+            if args == ["init"]:
+                return self.LEAF_HELP
+            return None  # build --help fails
+
+        with patch("teukhos.discover.run_help", side_effect=selective_help):
+            result = discover_binary("my-tool")
+
+        assert len(result.tools) == 1
+        assert result.tools[0].name == "init"
+
+    def test_binary_name_sanitization(self):
+        """Spaces and casing in binary path are sanitized in binary_name."""
+        with patch("teukhos.discover.run_help", return_value="A simple tool.\n"):
+            result = discover_binary("C:\\Program Files\\My Tool.exe")
+
+        assert result.binary_name == "my-tool"
+
+
+# ---------------------------------------------------------------------------
+# generate_yaml — additional edge cases
+# ---------------------------------------------------------------------------
+
+class TestGenerateYamlEdgeCases:
+    def _make_result(self, **kwargs):
+        return DiscoveryResult(binary="my-tool", binary_name="my-tool", **kwargs)
+
+    def test_tool_with_no_args_omits_args_key(self):
+        result = self._make_result(tools=[
+            DiscoveredCommand(name="cmd", subcommands=["cmd"]),
+        ])
+        yaml_str = generate_yaml(result)
+        config = yaml.safe_load(yaml_str)
+        assert "args" not in config["tools"][0]
+
+    def test_non_numeric_default_on_integer_arg(self):
+        """An integer-typed arg with a non-numeric default keeps the string default."""
+        result = self._make_result(tools=[
+            DiscoveredCommand(
+                name="cmd", subcommands=["cmd"],
+                args=[DiscoveredArg(name="size", flag="--size", arg_type="integer", default="auto")],
+            ),
+        ])
+        yaml_str = generate_yaml(result)
+        config = yaml.safe_load(yaml_str)
+        assert config["tools"][0]["args"][0]["default"] == "auto"
+
+    def test_multiple_tools_in_result(self):
+        result = self._make_result(
+            description="multi",
+            tools=[
+                DiscoveredCommand(name="a", subcommands=["a"]),
+                DiscoveredCommand(name="b", subcommands=["b"]),
+                DiscoveredCommand(name="c", subcommands=["c"]),
+            ],
+        )
+        yaml_str = generate_yaml(result)
+        config = yaml.safe_load(yaml_str)
+        assert len(config["tools"]) == 3
+        assert [t["name"] for t in config["tools"]] == ["a", "b", "c"]
+
+
+# ---------------------------------------------------------------------------
+# parse_options — additional edge cases
+# ---------------------------------------------------------------------------
+
+class TestParseOptionsEdgeCases:
+    def test_duration_hint_is_integer(self):
+        text = "  --wait <duration>         How long to wait\n"
+        opts = parse_options(text)
+        assert len(opts) == 1
+        assert opts[0].arg_type == "integer"

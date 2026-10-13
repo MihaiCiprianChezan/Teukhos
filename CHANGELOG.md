@@ -17,7 +17,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - **Windows:** `.cmd`/`.bat` commands reject arguments containing `cmd.exe` metacharacters or argument separators (command and argument injection); bare command names are no longer resolved from the server's current directory (binary planting), and tool processes inherit that setting; MSYS/Cygwin tools get `noglob`.
 - **Codex installer:** `forge.name` could inject extra `[mcp_servers.*]` tables into `~/.codex/config.toml`; keys are now quoted and values escaped.
 - `examples/database-tools.yaml`: `sqlite_query` runs with `-safe -readonly`, `sqlite_tables`/`sqlite_schema` pin their `query` arg with `enum` (it accepted `.shell`), and `pg_query` is removed (psql runs backslash meta-commands from `-c` and has no safe mode).
-- `serve` warns for any non-loopback bind without auth (was `0.0.0.0` only) and for `cors_origins: ["*"]` without auth.
+- `serve` warns for any non-loopback bind without auth (was `0.0.0.0` only), and refuses to start over HTTP with `cors_origins: ["*"]` and no auth (`*` turns the Origin check off).
 
 ### Added
 - `cli.max_output_bytes` (default 1 MB): stdout/stderr beyond it are truncated with a marker. Output is captured in temp files, so memory stays bounded. A `json_field` tool whose JSON exceeds the limit returns an error that says to raise it.

@@ -90,9 +90,22 @@ def test_network_bind_without_auth_warns(tmp_path, run_calls, host):
     assert "Security Warning" in result.output
 
 
-def test_cors_wildcard_without_auth_warns(tmp_path, run_calls):
+def test_cors_wildcard_without_auth_refuses_to_start(tmp_path, run_calls):
+    """'*' turns the Origin check off; without auth any website could call the tools."""
     result = _serve(tmp_path, "server:\n  transport: http\n  cors_origins: ['*']\n")
-    assert "any website" in result.output.lower()
+    assert result.exit_code == 1
+    assert "Refusing to start" in result.output
+    assert run_calls == []
+
+
+def test_cors_wildcard_with_auth_starts(tmp_path, run_calls, monkeypatch):
+    monkeypatch.setenv("TEUKHOS_TEST_KEY", "k")
+    result = _serve(tmp_path, (
+        "server:\n  transport: http\n  cors_origins: ['*']\n"
+        "auth:\n  mode: api_key\n  api_keys: ['env:TEUKHOS_TEST_KEY']\n"
+    ))
+    assert result.exit_code == 0, result.output
+    assert len(run_calls) == 1
 
 
 def test_markup_in_names_does_not_crash(tmp_path, run_calls):

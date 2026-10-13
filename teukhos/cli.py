@@ -112,24 +112,22 @@ def serve(
     server = forge_config.server
     is_http = server.transport == TransportType.http
 
-    # Security warnings for unauthenticated HTTP servers
+    # Security checks for unauthenticated HTTP servers
     if is_http and forge_config.auth.mode == AuthMode.none:
+        # Fail closed: '*' disables the Origin check, so any website in a browser could call the tools
+        if "*" in (server.cors_origins or []):
+            console.print(
+                "[bold red]Error:[/] cors_origins allows '*' but auth.mode is none, so any website "
+                "open in a browser could call these tools. List explicit origins or enable api_key "
+                "auth. Refusing to start."
+            )
+            raise typer.Exit(1)
         if server.host not in LOOPBACK_HOSTS:
             console.print(
                 Panel(
                     f"[bold red]WARNING:[/] Server is binding to "
                     f"{escape(server.host or 'all interfaces')} with no authentication!\n"
                     "This exposes your tools to the network. Add auth or use 127.0.0.1.",
-                    title="Security Warning",
-                    border_style="red",
-                )
-            )
-        if "*" in (server.cors_origins or []):
-            console.print(
-                Panel(
-                    "[bold red]WARNING:[/] cors_origins allows '*' with no authentication!\n"
-                    "Any website open in your browser can call these tools. "
-                    "List explicit origins or add auth.",
                     title="Security Warning",
                     border_style="red",
                 )

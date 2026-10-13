@@ -475,7 +475,7 @@ With `mode: api_key`, every HTTP path except `/health` needs `Authorization: Bea
 
 ### Browser Access (CORS and Origin)
 
-Requests that carry an `Origin` header (i.e. from a browser) are rejected with 403 unless the origin is listed in `server.cors_origins`. This blocks DNS-rebinding and other websites calling a local server; non-browser MCP clients send no `Origin` and are not affected. `"*"` allows every origin and turns that check off, so only use it together with `api_key` auth (`serve` warns otherwise).
+Requests that carry an `Origin` header (i.e. from a browser) are rejected with 403 unless the origin is listed in `server.cors_origins`. This blocks DNS-rebinding and other websites calling a local server; non-browser MCP clients send no `Origin` and are not affected. `"*"` allows every origin and turns that check off, so it needs `api_key` auth: over HTTP with `auth.mode: none`, `serve` refuses to start.
 
 ### Deployment Behind a Reverse Proxy
 

@@ -160,6 +160,12 @@ class ArgConfig(_Model):
     positional: bool = False
     secret: bool = False
 
+    @property
+    def env_default(self) -> str | None:
+        """For a secret arg with default 'env:VAR': VAR, resolved per call (keeps it out of the YAML)."""
+        d = self.default
+        return d[4:] if self.secret and isinstance(d, str) and d.startswith("env:") and len(d) > 4 else None
+
     @model_validator(mode="after")
     def _check_enum(self) -> ArgConfig:
         """Coerce enum values (and the default) to the arg type so they can be enforced as a Literal."""

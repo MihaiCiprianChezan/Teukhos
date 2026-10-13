@@ -19,6 +19,7 @@ from teukhos.installers.codebuddy import CodeBuddyInstaller
 from teukhos.installers.opencode import OpenCodeInstaller
 from teukhos.installers.trae import TraeInstaller
 from teukhos.installers.antigravity import AntigravityInstaller
+from teukhos.installers.lm_studio import LMStudioInstaller
 
 ALL_INSTALLERS: list[type[BaseInstaller]] = [
     ClaudeDesktopInstaller,
@@ -37,6 +38,7 @@ ALL_INSTALLERS: list[type[BaseInstaller]] = [
     OpenCodeInstaller,
     TraeInstaller,
     AntigravityInstaller,
+    LMStudioInstaller,
 ]
 
 # Old slugs of renamed clients

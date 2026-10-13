@@ -680,7 +680,7 @@ def test_all_installers_have_unique_slugs():
 
 
 def test_all_installers_count():
-    assert len(ALL_INSTALLERS) == 16
+    assert len(ALL_INSTALLERS) == 17
 
 
 def test_get_installer_by_slug():
@@ -695,7 +695,7 @@ def test_get_installer_unknown():
 
 def test_get_all_installers():
     installers = get_all_installers()
-    assert len(installers) == 16
+    assert len(installers) == 17
     assert all(isinstance(i, BaseInstaller) for i in installers)
 
 
@@ -759,6 +759,7 @@ LINUX_PATHS = {
     "opencode": (".config/opencode/opencode.json", "opencode.json"),
     "trae": (".config/Trae/User/mcp.json", ".trae/mcp.json"),
     "antigravity": (".gemini/config/mcp_config.json", ".agents/mcp_config.json"),
+    "lm-studio": (".lmstudio/mcp.json", None),
 }
 
 WINDOWS_APPDATA_PATHS = {
@@ -844,6 +845,7 @@ JSON_ENTRIES = {
     "codebuddy": ({"type": "stdio"}, {"type": "http", "url": URL, **_auth("${TK_TEST_KEY}")}),
     "trae": ({}, {"url": URL, **_auth("s3cret")}),
     "antigravity": ({}, {"serverUrl": URL, **_auth("s3cret")}),
+    "lm-studio": ({}, {"url": URL, **_auth("s3cret")}),
 }
 
 
@@ -889,3 +891,10 @@ def test_dest_installer_formats(tmp_path, monkeypatch):
     generic.install_stdio("teukhos-a", Path("/x.yaml"))
     assert json.loads((tmp_path / "b.json").read_text())["mcpServers"]["teukhos-a"] == {
         "command": "/bin/teukhos", "args": ["serve", str(Path("/x.yaml"))]}
+
+
+def test_lm_studio_home_pointer_file(fake_home, tmp_path):
+    from teukhos.installers.lm_studio import LMStudioInstaller
+    fake_home.mkdir(parents=True)
+    (fake_home / ".lmstudio-home-pointer").write_text(str(tmp_path / "models-drive" / "lmstudio") + "\n")
+    assert LMStudioInstaller().config_path(InstallScope.global_) == tmp_path / "models-drive" / "lmstudio" / "mcp.json"

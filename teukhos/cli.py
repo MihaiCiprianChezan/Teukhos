@@ -563,6 +563,35 @@ def discover(
     console.print(f"[dim]{len(result.tools)} tool(s) discovered.[/]")
 
 
+@app.command()
+def bundle(
+    config: Annotated[
+        Path, typer.Argument(help="Path to teukhos.yaml config file")
+    ] = Path(DEFAULT_CONFIG),
+    output: Annotated[
+        Optional[str], typer.Option("--output", "-o", help="Output file (default: <name>.mcpb)")
+    ] = None,
+) -> None:
+    """Build a Claude Desktop extension (.mcpb) that installs this config with a double-click."""
+    from teukhos.bundle import build_bundle, bundle_name
+
+    config = _resolve_config(config)
+    try:
+        forge_config = load_config(config)
+    except Exception as e:
+        console.print(f"[bold red]Error:[/] {escape(str(e))}")
+        raise typer.Exit(1)
+
+    out = Path(output) if output else Path(f"{bundle_name(forge_config)}.mcpb")
+    build_bundle(forge_config, config, out)
+    console.print(f"[bold green]Built![/] {escape(str(out.resolve()))}")
+    console.print(
+        "[dim]Install: double-click it, or Claude Desktop > Settings > Extensions > Install Extension.\n"
+        "Claude Desktop installs Teukhos from PyPI on first use (needs internet); the CLIs the tools\n"
+        "wrap must already be on the user's PATH. The bundle is unsigned.[/]"
+    )
+
+
 def _print_banner(config: object, resolved_keys: int = 0) -> None:
     """Print a startup banner with server info."""
     from teukhos.config import ForgeConfig

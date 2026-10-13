@@ -35,17 +35,19 @@ def resolve_key(value: str) -> str:
 class AuthMiddleware(BaseHTTPMiddleware):
     """Bearer token authentication middleware.
 
-    Only protects specified paths (default: /mcp). Health and other
-    endpoints pass through. When api_keys is empty, all requests are allowed.
+    Every path except the public ones (default: /health) requires a valid key;
+    an empty key list denies everything. Paths are matched on scope["path"],
+    which the router uses; request.url is rebuilt from the client-controlled
+    Host header and must not be used for access decisions.
     """
 
-    def __init__(self, app, api_keys: list[str], protected_paths: list[str] | None = None):
+    def __init__(self, app, api_keys: list[str], public_paths: list[str] | None = None):
         super().__init__(app)
         self.api_keys = set(api_keys)
-        self.protected_paths = set(protected_paths or ["/mcp"])
+        self.public_paths = set(["/health"] if public_paths is None else public_paths)
 
     async def dispatch(self, request: Request, call_next):
-        if not self.api_keys or request.url.path not in self.protected_paths:
+        if request.scope["path"] in self.public_paths:
             return await call_next(request)
 
         auth_header = request.headers.get("authorization", "")
@@ -62,4 +64,23 @@ class AuthMiddleware(BaseHTTPMiddleware):
                 status_code=401,
             )
 
+        return await call_next(request)
+
+
+class OriginMiddleware(BaseHTTPMiddleware):
+    """Reject browser requests from origins not listed in cors_origins.
+
+    Blocks DNS rebinding and cross-site calls to a local server (the MCP spec
+    requires servers to validate Origin). Clients that send no Origin header,
+    i.e. non-browser MCP clients, are not affected.
+    """
+
+    def __init__(self, app, allowed_origins: list[str] | None = None):
+        super().__init__(app)
+        self.allowed_origins = set(allowed_origins or [])
+
+    async def dispatch(self, request: Request, call_next):
+        origin = request.headers.get("origin")
+        if origin and "*" not in self.allowed_origins and origin not in self.allowed_origins:
+            return JSONResponse({"error": "Origin not allowed"}, status_code=403)
         return await call_next(request)

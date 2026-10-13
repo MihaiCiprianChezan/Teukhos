@@ -7,11 +7,12 @@ from typing import Annotated, Optional
 
 import typer
 from rich.console import Console
+from rich.markup import escape
 from rich.panel import Panel
 from rich.table import Table
 
 from teukhos import __version__
-from teukhos.config import TransportType, load_config
+from teukhos.config import AuthMode, TransportType, load_config
 
 def _version_callback(value: bool) -> None:
     if value:
@@ -42,6 +43,8 @@ def main(
 # Accept both the new teukhos.yaml and the legacy mcp-forge.yaml names
 DEFAULT_CONFIG = "teukhos.yaml"
 LEGACY_CONFIG = "mcp-forge.yaml"
+
+LOOPBACK_HOSTS = ("127.0.0.1", "localhost", "::1")
 
 
 def _resolve_config(path: Path) -> Path:
@@ -74,15 +77,15 @@ def serve(
 ) -> None:
     """Start the Teukhos MCP server."""
     config = _resolve_config(config)
-    console.print(f"[dim]Loading config: {config.resolve()}[/]")
+    console.print(f"[dim]Loading config: {escape(str(config.resolve()))}[/]")
 
     try:
         forge_config = load_config(config)
     except (FileNotFoundError, ValueError) as e:
-        console.print(f"[bold red]Error:[/] {e}")
+        console.print(f"[bold red]Error:[/] {escape(str(e))}")
         raise typer.Exit(1)
     except Exception as e:
-        console.print(f"[bold red]Config validation error:[/] {e}")
+        console.print(f"[bold red]Config validation error:[/] {escape(str(e))}")
         raise typer.Exit(1)
 
     if transport:
@@ -90,7 +93,7 @@ def serve(
             forge_config.server.transport = TransportType(transport)
         except ValueError:
             console.print(
-                f"[bold red]Error:[/] Invalid transport '{transport}'. Use 'stdio' or 'http'."
+                f"[bold red]Error:[/] Invalid transport '{escape(transport)}'. Use 'stdio' or 'http'."
             )
             raise typer.Exit(1)
     if port:
@@ -104,45 +107,61 @@ def serve(
             adapter = CLIAdapter(tool.cli, tool.args)
             warning = adapter.check_binary()
             if warning:
-                console.print(f"[bold yellow]Warning:[/] Tool '{tool.name}': {warning}")
+                console.print(f"[bold yellow]Warning:[/] Tool '{escape(tool.name)}': {escape(warning)}")
 
-    # Security warning for exposed unauthenticated servers
-    if (
-        forge_config.server.transport == TransportType.http
-        and forge_config.server.host == "0.0.0.0"
-        and forge_config.auth.mode.value == "none"
-    ):
-        console.print(
-            Panel(
-                "[bold red]WARNING:[/] Server is binding to 0.0.0.0 with no authentication!\n"
-                "This exposes your tools to the network. Add auth or use 127.0.0.1.",
-                title="Security Warning",
-                border_style="red",
+    server = forge_config.server
+    is_http = server.transport == TransportType.http
+
+    # Security warnings for unauthenticated HTTP servers
+    if is_http and forge_config.auth.mode == AuthMode.none:
+        if server.host not in LOOPBACK_HOSTS:
+            console.print(
+                Panel(
+                    f"[bold red]WARNING:[/] Server is binding to "
+                    f"{escape(server.host or 'all interfaces')} with no authentication!\n"
+                    "This exposes your tools to the network. Add auth or use 127.0.0.1.",
+                    title="Security Warning",
+                    border_style="red",
+                )
             )
-        )
-
-    _print_banner(forge_config)
+        if "*" in (server.cors_origins or []):
+            console.print(
+                Panel(
+                    "[bold red]WARNING:[/] cors_origins allows '*' with no authentication!\n"
+                    "Any website open in your browser can call these tools. "
+                    "List explicit origins or add auth.",
+                    title="Security Warning",
+                    border_style="red",
+                )
+            )
 
     from teukhos.engine import build_server
 
     bundle = build_server(forge_config)
     mcp = bundle.mcp
 
-    if forge_config.server.transport == TransportType.http:
+    # Fail closed: api_key auth without a resolvable key must not serve unauthenticated
+    if is_http and forge_config.auth.mode == AuthMode.api_key and not bundle.resolved_auth_keys:
+        console.print(
+            "[bold red]Error:[/] auth.mode is api_key but no API key could be resolved "
+            "(check the env vars named in auth.api_keys). Refusing to start."
+        )
+        raise typer.Exit(1)
+
+    _print_banner(forge_config)
+
+    if is_http:
         from starlette.middleware import Middleware
         from starlette.middleware.cors import CORSMiddleware
 
-        from teukhos.auth import AuthMiddleware
+        from teukhos.auth import AuthMiddleware, OriginMiddleware
 
-        middleware: list[Middleware] = []
+        # First entry is outermost: reject foreign origins, then answer CORS
+        # preflights, then authenticate.
+        middleware: list[Middleware] = [
+            Middleware(OriginMiddleware, allowed_origins=bundle.cors_origins)
+        ]
 
-        # Wire auth middleware if keys are configured
-        if bundle.resolved_auth_keys:
-            middleware.append(
-                Middleware(AuthMiddleware, api_keys=bundle.resolved_auth_keys)
-            )
-
-        # Wire CORS middleware if origins are configured
         if bundle.cors_origins:
             middleware.append(
                 Middleware(
@@ -159,11 +178,16 @@ def serve(
                 )
             )
 
+        if forge_config.auth.mode == AuthMode.api_key:
+            middleware.append(
+                Middleware(AuthMiddleware, api_keys=bundle.resolved_auth_keys)
+            )
+
         mcp.run(
             transport="streamable-http",
-            host=forge_config.server.host,
-            port=forge_config.server.port,
-            middleware=middleware or None,
+            host=server.host,
+            port=server.port,
+            middleware=middleware,
         )
     else:
         mcp.run(transport="stdio")
@@ -177,19 +201,19 @@ def validate(
 ) -> None:
     """Validate a teukhos.yaml config file. Exits 0 if valid, 1 if not."""
     config = _resolve_config(config)
-    console.print(f"[dim]Validating: {config.resolve()}[/]")
+    console.print(f"[dim]Validating: {escape(str(config.resolve()))}[/]")
 
     try:
         forge_config = load_config(config)
     except FileNotFoundError as e:
-        console.print(f"[bold red]Error:[/] {e}")
+        console.print(f"[bold red]Error:[/] {escape(str(e))}")
         raise typer.Exit(1)
     except Exception as e:
-        console.print(f"[bold red]Validation error:[/] {e}")
+        console.print(f"[bold red]Validation error:[/] {escape(str(e))}")
         raise typer.Exit(1)
 
     console.print(
-        f"[bold green]Valid![/] Server '{forge_config.forge.name}' "
+        f"[bold green]Valid![/] Server '{escape(forge_config.forge.name)}' "
         f"with {len(forge_config.tools)} tool(s)."
     )
 
@@ -198,7 +222,7 @@ def validate(
     table.add_column("Adapter", style="magenta")
     table.add_column("Description")
     for tool in forge_config.tools:
-        table.add_row(tool.name, tool.adapter, tool.description)
+        table.add_row(escape(tool.name), escape(tool.adapter), escape(tool.description))
     console.print(table)
 
     console.print(
@@ -293,21 +317,21 @@ def install(
         import shutil
 
         dest_path = Path(dest).resolve()
-        console.print(f"[dim]Target: {dest_path} (config-key: {config_key})[/]")
+        console.print(f"[dim]Target: {escape(str(dest_path))} (config-key: {escape(config_key)})[/]")
 
         # Resolve server name
         if not url:
             config_path = _resolve_config(config).resolve()
             if not config_path.exists():
-                console.print(f"[bold red]Error:[/] Config file not found: {config_path}")
+                console.print(f"[bold red]Error:[/] Config file not found: {escape(str(config_path))}")
                 raise typer.Exit(1)
             try:
                 forge_config = load_config(config_path)
             except Exception as e:
-                console.print(f"[bold red]Error:[/] {e}")
+                console.print(f"[bold red]Error:[/] {escape(str(e))}")
                 raise typer.Exit(1)
             server_name = f"teukhos-{forge_config.forge.name}"
-            console.print(f"[dim]Config: {config_path}[/]")
+            console.print(f"[dim]Config: {escape(str(config_path))}[/]")
         else:
             config_path = _resolve_config(config)
             if config_path.exists():
@@ -347,19 +371,19 @@ def install(
 
         console.print()
         console.print(f"[bold green]Installed![/] MCP server registered successfully.")
-        console.print(f"  Server name:  {server_name}")
+        console.print(f"  Server name:  {escape(server_name)}")
         console.print(f"  Transport:    {transport_mode}")
-        console.print(f"  Config key:   {config_key}")
-        console.print(f"  Written to:   {dest_path}")
+        console.print(f"  Config key:   {escape(config_key)}")
+        console.print(f"  Written to:   {escape(str(dest_path))}")
         if url:
-            console.print(f"  URL:          {url}")
+            console.print(f"  URL:          {escape(url)}")
         return
 
     # Determine target installers
     if client:
         inst = get_installer(client)
         if inst is None:
-            console.print(f"[bold red]Error:[/] Unknown client '{client}'.")
+            console.print(f"[bold red]Error:[/] Unknown client '{escape(client)}'.")
             console.print("Run 'teukhos clients' to see available clients.")
             raise typer.Exit(1)
         targets = [inst]
@@ -407,15 +431,15 @@ def install(
     if not url:
         config_path = _resolve_config(config).resolve()
         if not config_path.exists():
-            console.print(f"[bold red]Error:[/] Config file not found: {config_path}")
+            console.print(f"[bold red]Error:[/] Config file not found: {escape(str(config_path))}")
             raise typer.Exit(1)
         try:
             forge_config = load_config(config_path)
         except Exception as e:
-            console.print(f"[bold red]Error:[/] {e}")
+            console.print(f"[bold red]Error:[/] {escape(str(e))}")
             raise typer.Exit(1)
         server_name = f"teukhos-{forge_config.forge.name}"
-        console.print(f"[dim]Config: {config_path}[/]")
+        console.print(f"[dim]Config: {escape(str(config_path))}[/]")
     else:
         # HTTP mode -- server_name derived from URL or config if available
         config_path = _resolve_config(config)
@@ -439,15 +463,15 @@ def install(
             effective_scope = inst._effective_scope(scope)
             target_path = inst.config_path(effective_scope)
             console.print(f"[bold green]Installed![/] {inst.name}")
-            console.print(f"  Server name:  {server_name}")
+            console.print(f"  Server name:  {escape(server_name)}")
             console.print(f"  Transport:    {transport_mode}")
             console.print(f"  Scope:        {effective_scope.value}")
-            console.print(f"  Config file:  {target_path}")
+            console.print(f"  Config file:  {escape(str(target_path))}")
             if url:
-                console.print(f"  URL:          {url}")
+                console.print(f"  URL:          {escape(url)}")
             console.print()
         except Exception as e:
-            console.print(f"[bold red]Error installing for {inst.name}:[/] {e}\n")
+            console.print(f"[bold red]Error installing for {inst.name}:[/] {escape(str(e))}\n")
 
     console.print("[dim]Restart your client(s) to pick up the changes.[/]")
 
@@ -476,7 +500,7 @@ def uninstall(
     if client:
         inst = get_installer(client)
         if inst is None:
-            console.print(f"[bold red]Error:[/] Unknown client '{client}'.")
+            console.print(f"[bold red]Error:[/] Unknown client '{escape(client)}'.")
             raise typer.Exit(1)
         targets = [inst]
     elif all_clients:
@@ -495,12 +519,12 @@ def uninstall(
             effective_scope = inst._effective_scope(scope)
             target_path = inst.config_path(effective_scope)
             inst.uninstall(server_name, scope=scope)
-            console.print(f"[bold green]Removed![/] '{server_name}' from {inst.name}")
+            console.print(f"[bold green]Removed![/] '{escape(server_name)}' from {inst.name}")
             console.print(f"  Scope:        {effective_scope.value}")
-            console.print(f"  Config file:  {target_path}")
+            console.print(f"  Config file:  {escape(str(target_path))}")
             console.print()
         except Exception as e:
-            console.print(f"[bold red]Error removing from {inst.name}:[/] {e}\n")
+            console.print(f"[bold red]Error removing from {inst.name}:[/] {escape(str(e))}\n")
 
     console.print("[dim]Restart your client(s) to pick up the changes.[/]")
 
@@ -567,7 +591,7 @@ def discover(
 
     from teukhos.discover import discover_binary, generate_yaml
 
-    console.print(f"[bold]Discovering tools from:[/] {binary}")
+    console.print(f"[bold]Discovering tools from:[/] {escape(binary)}")
 
     try:
         prefix = filter_prefix.split() if filter_prefix else None
@@ -576,7 +600,7 @@ def discover(
             timeout=timeout,
         )
     except Exception as e:
-        console.print(f"[bold red]Error:[/] {e}\n{traceback.format_exc()}")
+        console.print(f"[bold red]Error:[/] {escape(str(e))}\n{escape(traceback.format_exc())}")
         raise typer.Exit(1)
 
     if not result.tools:
@@ -596,9 +620,9 @@ def discover(
             out_path.parent.mkdir(parents=True, exist_ok=True)
             out_path.write_text(yaml_content, encoding="utf-8")
         except OSError as e:
-            console.print(f"[bold red]Error writing output file:[/] {out_path} — {e}")
+            console.print(f"[bold red]Error writing output file:[/] {escape(str(out_path))} — {escape(str(e))}")
             raise typer.Exit(1)
-        console.print(f"\n[bold green]Generated![/] {out_path.resolve()}")
+        console.print(f"\n[bold green]Generated![/] {escape(str(out_path.resolve()))}")
 
     console.print(f"[dim]{len(result.tools)} tool(s) discovered.[/]")
 
@@ -612,14 +636,14 @@ def _print_banner(config: object) -> None:
 
     banner = Table.grid(padding=1)
     banner.add_row("[bold cyan]Teukhos[/]", f"v{__version__}")
-    banner.add_row("[bold]Server:[/]", config.forge.name)
+    banner.add_row("[bold]Server:[/]", escape(config.forge.name))
     banner.add_row("[bold]Transport:[/]", config.server.transport.value)
     if config.server.transport == TransportType.http:
         host = config.server.host
         port = config.server.port
         banner.add_row("[bold]Endpoint:[/]", f"http://{host}:{port}/mcp")
         banner.add_row("[bold]Health:[/]", f"http://{host}:{port}/health")
-    banner.add_row("[bold]Tools:[/]", ", ".join(tool_names) or "(none)")
+    banner.add_row("[bold]Tools:[/]", escape(", ".join(tool_names)) or "(none)")
 
     # Auth info
     auth_mode = config.auth.mode.value

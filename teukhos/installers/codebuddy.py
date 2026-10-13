@@ -7,12 +7,10 @@ class CodeBuddyInstaller(JsonMcpInstaller):
     name = "CodeBuddy"
     slug = "codebuddy"
     supported_scopes = [InstallScope.global_, InstallScope.project]
-    stdio_needs_type_field = True
+    stdio_type = "stdio"
+    http_type = "http"
 
-    def config_path(self, scope: InstallScope) -> Path:
-        if self._config_path_override and scope in self._config_path_override:
-            return self._config_path_override[scope]
-        effective = self._effective_scope(scope)
-        if effective == InstallScope.project:
+    def default_path(self, scope: InstallScope) -> Path:
+        if scope == InstallScope.project:
             return self.cwd / ".mcp.json"
         return Path.home() / ".codebuddy" / ".mcp.json"

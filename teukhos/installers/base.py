@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import platform
 import shutil
 import tempfile
 from abc import ABC, abstractmethod
@@ -16,12 +17,29 @@ class InstallScope(Enum):
     project = "project"
 
 
+def xdg_config_dir() -> Path:
+    """$XDG_CONFIG_HOME, or ~/.config."""
+    return Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config")
+
+
+def app_data_dir() -> Path:
+    """Per-user app data: %APPDATA% on Windows, ~/Library/Application Support on macOS, else XDG."""
+    system = platform.system()
+    if system == "Windows":
+        return Path(os.environ.get("APPDATA") or Path.home() / "AppData" / "Roaming")
+    if system == "Darwin":
+        return Path.home() / "Library" / "Application Support"
+    return xdg_config_dir()
+
+
 class BaseInstaller(ABC):
     """Abstract base for all client installers."""
 
     name: str
     slug: str
     supported_scopes: list[InstallScope]
+
+    _config_path_override: dict[InstallScope, Path] | None = None  # tests point installers at temp files
 
     def __init__(self, cwd: Path | None = None):
         self.cwd = cwd or Path.cwd()
@@ -30,9 +48,15 @@ class BaseInstaller(ABC):
     def detect(self) -> bool:
         """Return True if this client is installed on the system."""
 
-    @abstractmethod
     def config_path(self, scope: InstallScope) -> Path:
-        """Return config path for the given scope."""
+        """Config file for the scope (project falls back to global when the client has none)."""
+        if self._config_path_override and scope in self._config_path_override:
+            return self._config_path_override[scope]
+        return self.default_path(self._effective_scope(scope))
+
+    @abstractmethod
+    def default_path(self, scope: InstallScope) -> Path:
+        """Where the client reads its MCP config for an (effective) scope."""
 
     def _effective_scope(self, scope: InstallScope) -> InstallScope:
         """Return the effective scope, falling back to global if needed."""
@@ -114,42 +138,43 @@ def remove_mcp_entry(config: dict, server_name: str,
 class JsonMcpInstaller(BaseInstaller):
     """Concrete base for clients that use a JSON file with mcpServers/servers key.
 
-    Most MCP clients follow this pattern. Subclasses only need to set class
-    attributes and implement config_path(). All install/uninstall logic is shared.
+    Most MCP clients follow this pattern. Subclasses set the class attributes
+    below and implement default_path(). All install/uninstall logic is shared.
     """
 
     config_key: str = "mcpServers"
-    supports_env_substitution: bool = True
-    stdio_needs_type_field: bool = False
-
-    _config_path_override: dict[InstallScope, Path] | None = None
+    stdio_type: str | None = None  # "type" for stdio entries, if the client wants one
+    http_type: str | None = None   # "type" for remote entries ("http", "streamableHttp", ...); None: url only
+    # How the client spells an env var reference in headers, as a format string
+    # ("${{{}}}" -> ${VAR}, "${{env:{}}}" -> ${env:VAR}); None: it can't, so resolve the key at install.
+    env_ref: str | None = "${{{}}}"
 
     def detect(self) -> bool:
         return self.config_path(InstallScope.global_).parent.exists()
+
+    def api_key_ref(self, api_key: str) -> str:
+        """The API key as the client should see it: an env reference it expands, or the value."""
+        if not api_key.startswith("env:"):
+            return api_key
+        if self.env_ref:
+            return self.env_ref.format(api_key[4:])
+        from teukhos.auth import resolve_key
+        # Fail loudly rather than write "Bearer env:VAR"; the resolved key is stored in plain text
+        return resolve_key(api_key)
 
     def stdio_entry(self, teukhos_bin: str, teukhos_config_path: Path) -> dict:
         entry: dict = {
             "command": teukhos_bin,
             "args": ["serve", str(teukhos_config_path)],
         }
-        if self.stdio_needs_type_field:
-            entry["type"] = "stdio"
+        if self.stdio_type:
+            entry["type"] = self.stdio_type
         return entry
 
     def http_entry(self, url: str, api_key: str | None) -> dict:
-        entry: dict = {"url": url}
-        if self.stdio_needs_type_field:
-            entry["type"] = "http"
+        entry: dict = {"type": self.http_type, "url": url} if self.http_type else {"url": url}
         if api_key:
-            if api_key.startswith("env:") and self.supports_env_substitution:
-                env_var = api_key[4:]
-                entry["headers"] = {"Authorization": f"Bearer ${{{env_var}}}"}
-            elif api_key.startswith("env:"):
-                from teukhos.auth import resolve_key
-                # Client can't expand ${VAR}: resolve now, and fail loudly rather than write "Bearer env:VAR"
-                entry["headers"] = {"Authorization": f"Bearer {resolve_key(api_key)}"}
-            else:
-                entry["headers"] = {"Authorization": f"Bearer {api_key}"}
+            entry["headers"] = {"Authorization": f"Bearer {self.api_key_ref(api_key)}"}
         return entry
 
     def install_stdio(self, server_name: str, teukhos_config_path: Path,
@@ -177,3 +202,21 @@ class JsonMcpInstaller(BaseInstaller):
         config = read_json_config(path)
         remove_mcp_entry(config, server_name, key=self.config_key)
         atomic_write_json(path, config)
+
+
+class DestInstaller(JsonMcpInstaller):
+    """`install --dest`: any JSON file; "servers" selects the VS Code format."""
+
+    name = "Custom file"
+    slug = "dest"
+    supported_scopes = [InstallScope.global_]
+
+    def __init__(self, path: Path, config_key: str = "mcpServers"):
+        super().__init__()
+        self.path = path
+        self.config_key = config_key
+        if config_key == "servers":
+            self.stdio_type, self.http_type = "stdio", "http"
+
+    def default_path(self, scope: InstallScope) -> Path:
+        return self.path

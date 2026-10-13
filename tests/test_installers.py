@@ -123,20 +123,6 @@ def test_claude_desktop_install_http_refused(tmp_path):
     assert not config_file.exists()
 
 
-def test_claude_desktop_config_paths(tmp_path, monkeypatch):
-    import teukhos.installers.claude_desktop as cd
-    monkeypatch.setattr(cd.platform, "system", lambda: "Linux")
-    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
-    assert ClaudeDesktopInstaller().config_path(InstallScope.global_) == (
-        tmp_path / "xdg" / "Claude" / "claude_desktop_config.json"
-    )
-    monkeypatch.setattr(cd.platform, "system", lambda: "Windows")
-    monkeypatch.setenv("APPDATA", str(tmp_path / "roaming"))
-    assert ClaudeDesktopInstaller().config_path(InstallScope.global_) == (
-        tmp_path / "roaming" / "Claude" / "claude_desktop_config.json"
-    )
-
-
 def test_claude_desktop_uninstall(tmp_path):
     config_file = tmp_path / "claude_desktop_config.json"
     config_file.write_text(json.dumps({
@@ -164,7 +150,7 @@ def test_json_install_http_unresolved_env_key_raises(tmp_path, monkeypatch):
     from teukhos.installers.cursor import CursorInstaller
 
     class NoSubstitution(CursorInstaller):
-        supports_env_substitution = False
+        env_ref = None
 
     monkeypatch.delenv("TEUKHOS_TEST_UNSET_KEY", raising=False)
     config_file = tmp_path / "mcp.json"
@@ -217,7 +203,7 @@ def test_claude_code_install_http_env_substitution(tmp_path):
 
 
 def test_claude_code_project_scope(tmp_path):
-    config_file = tmp_path / ".claude" / "settings.json"
+    config_file = tmp_path / ".mcp.json"
     installer = ClaudeCodeInstaller(cwd=tmp_path)
     installer._config_path_override = {InstallScope.project: config_file}
     installer.install_stdio("teukhos-test", Path("/path/to/config.yaml"), scope=InstallScope.project)
@@ -460,18 +446,18 @@ def test_codex_project_scope(tmp_path, monkeypatch):
     assert _servers(config_file)["teukhos-test"]["command"] == "teukhos"
 
 
-from teukhos.installers.windsurf import WindsurfInstaller
+from teukhos.installers.devin import DevinInstaller
 
 
-def test_windsurf_slug():
-    installer = WindsurfInstaller()
-    assert installer.slug == "windsurf"
-    assert installer.name == "Windsurf"
+def test_devin_slug_and_windsurf_alias():
+    from teukhos.installers import get_installer
+    assert DevinInstaller().slug == "devin"
+    assert get_installer("windsurf").slug == "devin"
 
 
-def test_windsurf_install_stdio(tmp_path):
+def test_devin_install_stdio(tmp_path):
     config_file = tmp_path / "mcp_config.json"
-    installer = WindsurfInstaller()
+    installer = DevinInstaller()
     installer._config_path_override = {InstallScope.global_: config_file}
     installer.install_stdio("teukhos-test", Path("/path/to/config.yaml"))
     data = json.loads(config_file.read_text())
@@ -694,7 +680,7 @@ def test_all_installers_have_unique_slugs():
 
 
 def test_all_installers_count():
-    assert len(ALL_INSTALLERS) == 15
+    assert len(ALL_INSTALLERS) == 16
 
 
 def test_get_installer_by_slug():
@@ -709,7 +695,7 @@ def test_get_installer_unknown():
 
 def test_get_all_installers():
     installers = get_all_installers()
-    assert len(installers) == 15
+    assert len(installers) == 16
     assert all(isinstance(i, BaseInstaller) for i in installers)
 
 
@@ -748,3 +734,158 @@ def test_atomic_write_json_replaces_dangling_symlink(tmp_path):
     atomic_write_json(link, {"a": 1})
     assert not link.is_symlink()
     assert not outside.parent.exists()
+
+
+# ---------------------------------------------------------------------------
+# Every client: default config path and the exact entries written
+# ---------------------------------------------------------------------------
+
+LINUX_PATHS = {
+    # slug: (global path under HOME, project path under CWD or None if global-only)
+    "claude-desktop": (".config/Claude/claude_desktop_config.json", None),
+    "claude-code": (".claude.json", ".mcp.json"),
+    "cursor": (".cursor/mcp.json", ".cursor/mcp.json"),
+    "github-copilot": (".config/Code/User/mcp.json", ".vscode/mcp.json"),
+    "gemini-cli": (".gemini/settings.json", ".gemini/settings.json"),
+    "codex": (".codex/config.toml", ".codex/config.toml"),
+    "devin": (".config/devin/mcp_config.json", ".devin/mcp_config.json"),
+    "cline": (".cline/data/settings/cline_mcp_settings.json", None),
+    "roo-code": (".config/Code/User/globalStorage/rooveterinaryinc.roo-cline/settings/mcp_settings.json",
+                 ".roo/mcp.json"),
+    "continue": (".continue/mcpServers/mcp.json", ".continue/mcpServers/mcp.json"),
+    "kiro": (".kiro/settings/mcp.json", ".kiro/settings/mcp.json"),
+    "augment": (".augment/settings.json", ".augment/settings.json"),
+    "codebuddy": (".codebuddy/.mcp.json", ".mcp.json"),
+    "opencode": (".config/opencode/opencode.json", "opencode.json"),
+    "trae": (".config/Trae/User/mcp.json", ".trae/mcp.json"),
+    "antigravity": (".gemini/config/mcp_config.json", ".agents/mcp_config.json"),
+}
+
+WINDOWS_APPDATA_PATHS = {
+    "claude-desktop": "Claude/claude_desktop_config.json",
+    "github-copilot": "Code/User/mcp.json",
+    "devin": "devin/mcp_config.json",
+    "trae": "Trae/User/mcp.json",
+}
+
+
+@pytest.fixture
+def fake_home(tmp_path, monkeypatch):
+    home = tmp_path / "home"
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: home))
+    for var in ("XDG_CONFIG_HOME", "CLINE_MCP_SETTINGS_PATH", "CLINE_DATA_DIR", "CLINE_DIR"):
+        monkeypatch.delenv(var, raising=False)
+    return home
+
+
+def _set_system(monkeypatch, system):
+    import teukhos.installers.base as base_mod
+    import teukhos.installers.devin as devin_mod
+    monkeypatch.setattr(base_mod.platform, "system", lambda: system)
+    monkeypatch.setattr(devin_mod.platform, "system", lambda: system)
+
+
+def test_every_installer_has_a_path_entry():
+    assert set(LINUX_PATHS) == {cls.slug for cls in ALL_INSTALLERS}
+
+
+@pytest.mark.parametrize("slug", sorted(LINUX_PATHS))
+def test_default_paths_linux(fake_home, tmp_path, monkeypatch, slug):
+    from teukhos.installers import get_installer
+    _set_system(monkeypatch, "Linux")
+    cwd = tmp_path / "project"
+    installer = get_installer(slug)
+    installer.cwd = cwd
+    global_rel, project_rel = LINUX_PATHS[slug]
+    assert installer.config_path(InstallScope.global_) == fake_home / global_rel
+    expected_project = cwd / project_rel if project_rel else fake_home / global_rel
+    assert installer.config_path(InstallScope.project) == expected_project
+
+
+@pytest.mark.parametrize("slug", sorted(WINDOWS_APPDATA_PATHS))
+def test_default_paths_windows_appdata(fake_home, tmp_path, monkeypatch, slug):
+    from teukhos.installers import get_installer
+    _set_system(monkeypatch, "Windows")
+    monkeypatch.setenv("APPDATA", str(tmp_path / "roaming"))
+    assert get_installer(slug).config_path(InstallScope.global_) == (
+        tmp_path / "roaming" / WINDOWS_APPDATA_PATHS[slug]
+    )
+
+
+def test_cline_path_env_overrides(fake_home, tmp_path, monkeypatch):
+    from teukhos.installers.cline import ClineInstaller
+    monkeypatch.setenv("CLINE_DIR", str(tmp_path / "c"))
+    assert ClineInstaller().config_path(InstallScope.global_) == (
+        tmp_path / "c" / "data" / "settings" / "cline_mcp_settings.json"
+    )
+    monkeypatch.setenv("CLINE_MCP_SETTINGS_PATH", str(tmp_path / "x.json"))
+    assert ClineInstaller().config_path(InstallScope.global_) == tmp_path / "x.json"
+
+
+URL = "http://h:8765/mcp"
+
+
+def _auth(token):
+    return {"headers": {"Authorization": f"Bearer {token}"}}
+
+
+JSON_ENTRIES = {
+    # slug: (extra stdio fields, exact http entry for --key env:TK_TEST_KEY with TK_TEST_KEY=s3cret)
+    "claude-code": ({}, {"type": "http", "url": URL, **_auth("${TK_TEST_KEY}")}),
+    "cursor": ({"type": "stdio"}, {"url": URL, **_auth("${env:TK_TEST_KEY}")}),
+    "github-copilot": ({"type": "stdio"}, {"type": "http", "url": URL, **_auth("${env:TK_TEST_KEY}")}),
+    "gemini-cli": ({}, {"url": URL, **_auth("${TK_TEST_KEY}")}),
+    "devin": ({}, {"url": URL, **_auth("${env:TK_TEST_KEY}")}),
+    "cline": ({}, {"type": "streamableHttp", "url": URL, **_auth("${env:TK_TEST_KEY}")}),
+    "roo-code": ({}, {"type": "streamable-http", "url": URL, **_auth("${env:TK_TEST_KEY}")}),
+    "continue": ({}, {"url": URL, **_auth("s3cret")}),
+    "kiro": ({}, {"url": URL, **_auth("${TK_TEST_KEY}")}),
+    "augment": ({}, {"url": URL, **_auth("s3cret")}),
+    "codebuddy": ({"type": "stdio"}, {"type": "http", "url": URL, **_auth("${TK_TEST_KEY}")}),
+    "trae": ({}, {"url": URL, **_auth("s3cret")}),
+    "antigravity": ({}, {"serverUrl": URL, **_auth("s3cret")}),
+}
+
+
+@pytest.mark.parametrize("slug", sorted(JSON_ENTRIES))
+def test_json_installer_entries(tmp_path, monkeypatch, slug):
+    import teukhos.installers.base as base_mod
+    from teukhos.installers import get_installer
+    monkeypatch.setattr(base_mod.shutil, "which", lambda name: "/bin/teukhos")
+    monkeypatch.setenv("TK_TEST_KEY", "s3cret")
+    installer = get_installer(slug)
+    config_file = tmp_path / "config.json"
+    installer._config_path_override = {InstallScope.global_: config_file}
+    stdio_extra, http_entry = JSON_ENTRIES[slug]
+
+    installer.install_stdio("teukhos-a", Path("/x.yaml"))
+    installer.install_http("teukhos-b", URL, "env:TK_TEST_KEY")
+    servers = json.loads(config_file.read_text())[installer.config_key]
+    assert servers["teukhos-a"] == {"command": "/bin/teukhos", "args": ["serve", str(Path("/x.yaml"))], **stdio_extra}
+    assert servers["teukhos-b"] == http_entry
+
+
+def test_gemini_allowlists_key_env_var(tmp_path, monkeypatch):
+    """Gemini drops env vars named like *KEY* from header expansion unless allowlisted."""
+    from teukhos.installers.gemini_cli import GeminiCLIInstaller
+    config_file = tmp_path / "settings.json"
+    installer = GeminiCLIInstaller()
+    installer._config_path_override = {InstallScope.global_: config_file}
+    installer.install_http("teukhos-a", URL, "env:TEUKHOS_API_KEY")
+    installer.install_http("teukhos-b", URL, "env:TEUKHOS_API_KEY")
+    data = json.loads(config_file.read_text())
+    assert data["security"]["environmentVariableRedaction"]["allowed"] == ["TEUKHOS_API_KEY"]
+
+
+def test_dest_installer_formats(tmp_path, monkeypatch):
+    import teukhos.installers.base as base_mod
+    from teukhos.installers.base import DestInstaller
+    monkeypatch.setattr(base_mod.shutil, "which", lambda name: "/bin/teukhos")
+    vscode = DestInstaller(tmp_path / "a.json", "servers")
+    vscode.install_http("teukhos-a", URL, "env:K")
+    assert json.loads((tmp_path / "a.json").read_text())["servers"]["teukhos-a"] == {
+        "type": "http", "url": URL, **_auth("${K}")}
+    generic = DestInstaller(tmp_path / "b.json")
+    generic.install_stdio("teukhos-a", Path("/x.yaml"))
+    assert json.loads((tmp_path / "b.json").read_text())["mcpServers"]["teukhos-a"] == {
+        "command": "/bin/teukhos", "args": ["serve", str(Path("/x.yaml"))]}

@@ -1,30 +1,17 @@
-"""Installer for Roo Code."""
+"""Installer for Roo Code (discontinued 2026-05; existing installs keep working)."""
 from __future__ import annotations
-import platform
 from pathlib import Path
-from teukhos.installers.base import InstallScope, JsonMcpInstaller
+from teukhos.installers.base import InstallScope, JsonMcpInstaller, app_data_dir
 
 class RooCodeInstaller(JsonMcpInstaller):
     name = "Roo Code"
     slug = "roo-code"
     supported_scopes = [InstallScope.global_, InstallScope.project]
+    http_type = "streamable-http"
+    env_ref = "${{env:{}}}"
 
-    def config_path(self, scope: InstallScope) -> Path:
-        if self._config_path_override and scope in self._config_path_override:
-            return self._config_path_override[scope]
-        effective = self._effective_scope(scope)
-        if effective == InstallScope.project:
+    def default_path(self, scope: InstallScope) -> Path:
+        if scope == InstallScope.project:
             return self.cwd / ".roo" / "mcp.json"
-        system = platform.system()
-        if system == "Windows":
-            return (Path.home() / "AppData" / "Roaming" / "Code" / "User"
-                    / "globalStorage" / "rooveterinaryinc.roo-cline" / "settings"
-                    / "cline_mcp_settings.json")
-        elif system == "Darwin":
-            return (Path.home() / "Library" / "Application Support" / "Code" / "User"
-                    / "globalStorage" / "rooveterinaryinc.roo-cline" / "settings"
-                    / "cline_mcp_settings.json")
-        else:
-            return (Path.home() / ".config" / "Code" / "User"
-                    / "globalStorage" / "rooveterinaryinc.roo-cline" / "settings"
-                    / "cline_mcp_settings.json")
+        return (app_data_dir() / "Code" / "User" / "globalStorage" / "rooveterinaryinc.roo-cline"
+                / "settings" / "mcp_settings.json")

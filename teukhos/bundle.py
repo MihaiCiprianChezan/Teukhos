@@ -55,14 +55,29 @@ def manifest(config: ForgeConfig) -> dict:
 
 
 def pyproject(config: ForgeConfig) -> str:
+    # Only used by `uv sync` (package = false), so a fixed name/version: forge names such as
+    # 'teukhos' or 'mcp' would shadow a dependency, and versions like 'latest' aren't PEP 440
     return (
         "[project]\n"
-        f'name = "{bundle_name(config)}"\n'
-        f'version = "{config.forge.version}"\n'
+        'name = "teukhos-bundle"\n'
+        'version = "0.0.0"\n'
         'requires-python = ">=3.11"\n'
         f'dependencies = ["teukhos~={__version__}"]\n'
         "\n[tool.uv]\npackage = false\n"
     )
+
+
+def literal_secrets(config: ForgeConfig) -> list[str]:
+    """Credentials written into the YAML itself, which would ship inside the bundle."""
+    found = [f"tools.{t.name}.args.{a.name}" for t in config.tools for a in t.args
+             if a.secret and a.default is not None and not a.env_default]
+    found += ["auth.api_keys"] if any(not k.startswith("env:") for k in config.auth.api_keys) else []
+    if config.auth.oauth:
+        for name in ("client_secret", "signing_key"):
+            value = getattr(config.auth.oauth, name)
+            if value and not value.startswith("env:"):
+                found.append(f"auth.oauth.{name}")
+    return found
 
 
 def build_bundle(config: ForgeConfig, config_path: Path, out: Path) -> Path:

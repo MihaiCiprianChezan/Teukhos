@@ -12,22 +12,6 @@ from starlette.responses import JSONResponse
 from teukhos.config import OAuthConfig, OAuthProviderType
 
 
-def claims_user(claims: dict, subject: str | None = None) -> str | None:
-    """The caller's name from token claims: email where the provider has one, else login/subject."""
-    for name in ("email", "upn", "preferred_username", "login"):
-        if claims.get(name):
-            return str(claims[name])
-    return subject
-
-
-def current_user() -> str | None:
-    """The authenticated caller of the current MCP request (OAuth modes), or None."""
-    from fastmcp.server.dependencies import get_access_token
-
-    token = get_access_token()
-    return claims_user(token.claims or {}, token.subject) if token else None
-
-
 def resolve_key(value: str) -> str:
     """Resolve an API key value.
 
@@ -86,14 +70,19 @@ def build_oauth_provider(oauth: OAuthConfig, public_url: str) -> AuthProvider:
                                   cache_ttl_seconds=300, **common)
         case OAuthProviderType.github:
             from fastmcp.server.auth.providers.github import GitHubProvider
-            return GitHubProvider(client_secret=secret, cache_ttl_seconds=300, **common)
+            # read:user is all Teukhos needs (fastmcp's default 'user' can write the profile)
+            return GitHubProvider(client_secret=secret, required_scopes=["read:user"], cache_ttl_seconds=300,
+                                  **common)
         case OAuthProviderType.oidc:
             from fastmcp.server.auth.oidc_proxy import OIDCProxy
             scopes = ["openid", "email", "profile"]
-            # Fetches the provider's discovery document now, so the IdP must be reachable at startup
+            requested = [*scopes, "offline_access", *oauth.extra_scopes]
+            # Fetches the provider's discovery document now, so the IdP must be reachable at startup.
+            # Clients usually ask only for the required scopes, so force the full set upstream
+            # (e.g. Okta's 'groups'), while tokens are only required to carry the OIDC ones.
             return OIDCProxy(config_url=oauth.config_url, client_secret=secret, verify_id_token=oauth.verify_id_token,
-                             required_scopes=scopes, valid_scopes=scopes + ["offline_access", *oauth.extra_scopes],
-                             **common)
+                             required_scopes=scopes, valid_scopes=requested,
+                             extra_authorize_params={"scope": " ".join(requested)}, **common)
 
 
 class AuthMiddleware(BaseHTTPMiddleware):

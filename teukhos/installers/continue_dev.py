@@ -9,6 +9,9 @@ class ContinueDevInstaller(JsonMcpInstaller):
     supported_scopes = [InstallScope.global_, InstallScope.project]
     env_ref = None  # headers are sent verbatim
 
+    def detect(self) -> bool:
+        return (Path.home() / ".continue").exists()
+
     def default_path(self, scope: InstallScope) -> Path:
         # Continue only scans mcpServers/ folders, not ~/.continue/mcp.json
         root = self.cwd if scope == InstallScope.project else Path.home()

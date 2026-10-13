@@ -88,7 +88,9 @@ class ServerConfig(_Model):
             raise ValueError("server.public_url must be an origin like https://tools.example.com (no path)")
         if url.scheme == "http" and url.hostname not in LOOPBACK_HOSTS:
             raise ValueError("server.public_url must use https (plain http is allowed only for localhost)")
-        self.public_url = self.public_url.rstrip("/")
+        # Canonical form, as browsers send it in Origin: lowercase, no default port, no trailing slash
+        netloc = url.netloc.lower().removesuffix({"http": ":80", "https": ":443"}[url.scheme])
+        self.public_url = f"{url.scheme}://{netloc}"
         return self
 
 
@@ -140,11 +142,10 @@ class AuthConfig(_Model):
     def _check_oauth(self) -> AuthConfig:
         if self.mode == AuthMode.oauth and self.oauth is None:
             raise ValueError("auth.mode oauth needs an auth.oauth block")
-        if self.mode == AuthMode.oauth and self.oauth.provider in (OAuthProviderType.google,
-                                                                   OAuthProviderType.github) and not self.allow:
-            # Any Google or GitHub account in the world can sign in; the rule is what limits it
-            raise ValueError(f"provider {self.oauth.provider.value} needs auth.allow "
-                             "(e.g. domains: [example.com])")
+        if self.mode == AuthMode.oauth and not self.allow:
+            # Anyone the identity provider signs in would get every tool: any Google or GitHub
+            # account, self-registered OIDC users, Entra guests. The rule is what limits it.
+            raise ValueError("auth.mode oauth needs auth.allow (e.g. domains: [example.com] or groups: [...])")
         return self
 
 

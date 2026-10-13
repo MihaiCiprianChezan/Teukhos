@@ -886,7 +886,7 @@ def test_dest_installer_formats(tmp_path, monkeypatch):
     vscode = DestInstaller(tmp_path / "a.json", "servers")
     vscode.install_http("teukhos-a", URL, "env:K")
     assert json.loads((tmp_path / "a.json").read_text())["servers"]["teukhos-a"] == {
-        "type": "http", "url": URL, **_auth("${K}")}
+        "type": "http", "url": URL, **_auth("${env:K}")}  # VS Code sends a bare ${K} literally
     generic = DestInstaller(tmp_path / "b.json")
     generic.install_stdio("teukhos-a", Path("/x.yaml"))
     assert json.loads((tmp_path / "b.json").read_text())["mcpServers"]["teukhos-a"] == {
@@ -898,3 +898,16 @@ def test_lm_studio_home_pointer_file(fake_home, tmp_path):
     fake_home.mkdir(parents=True)
     (fake_home / ".lmstudio-home-pointer").write_text(str(tmp_path / "models-drive" / "lmstudio") + "\n")
     assert LMStudioInstaller().config_path(InstallScope.global_) == tmp_path / "models-drive" / "lmstudio" / "mcp.json"
+
+
+def test_opencode_oauth_server_entry_lets_opencode_log_in(tmp_path, monkeypatch):
+    config_file = tmp_path / "opencode.json"
+    _opencode(config_file, monkeypatch).install_http("teukhos-test", URL, "")
+    assert json.loads(config_file.read_text())["mcp"]["teukhos-test"] == {"type": "remote", "url": URL}
+
+
+def test_continue_detected_by_its_home_folder(fake_home):
+    from teukhos.installers.continue_dev import ContinueDevInstaller
+    assert not ContinueDevInstaller().detect()
+    (fake_home / ".continue").mkdir(parents=True)
+    assert ContinueDevInstaller().detect()

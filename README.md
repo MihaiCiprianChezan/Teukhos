@@ -297,7 +297,7 @@ server:
   cors_origins: ["http://localhost:6274"]  # browser origins allowed over HTTP (default: none); "*" only with auth
   public_url: null             # oauth: the https origin clients use, e.g. https://tools.example.com
   audit_log: null              # path of a JSONL file with one line per tool call
-  json_response: false         # JSON instead of SSE responses (Cloudflare quick tunnels)
+  json_response: false         # plain JSON responses, stateless (no MCP session), for proxies that can't stream
 
 auth:
   mode: none                   # none | api_key | oauth
@@ -546,13 +546,13 @@ tools:
 | Provider | Setup |
 |---|---|
 | **Entra ID** | App registration in your tenant. `tenant_id` must be the tenant GUID. Under *Expose an API* add a scope named `mcp.access` (or set `oauth.scope`). Set `requestedAccessTokenVersion: 2` in the manifest. Use **app roles** for `groups:` rules (group claims are GUIDs and overflow above ~200), and add the `email` optional claim for email/domain rules. |
-| **Google** | OAuth client of type *Web application*. `auth.allow` is required (any Google account can sign in otherwise). `domains:` matches the Workspace domain (`hd`), never the email suffix, so `gmail.com` addresses don't count. |
-| **GitHub** | OAuth App. `auth.allow` is required. Match people by `subjects:` (their numeric user id): usernames can be released and claimed by someone else, and public emails are often missing. There are no org or team claims. |
+| **Google** | OAuth client of type *Web application*. `domains:` matches the Workspace domain (`hd`), never the email suffix, so `gmail.com` addresses don't count. |
+| **GitHub** | OAuth App (Teukhos asks only for `read:user`). Match people by `subjects:` (their numeric user id): usernames can be released and claimed by someone else, and public emails are often missing. There are no org or team claims. |
 | **Okta / OIDC** | `config_url: https://<okta>/oauth2/default/.well-known/openid-configuration` (a custom authorization server), or Okta's org server with `verify_id_token: true`. For `groups:` rules, add a groups claim, requesting it with `extra_scopes: [groups]` if needed. |
 
 **Access rules.** `auth.allow` and `tools[].allow` take `emails`, `domains`, `groups` (the `groups` or `roles` claim) and `subjects` (`sub`, or Entra `oid`). Within a rule any match allows; a tool needs both the server rule and its own. A tool someone may not use is hidden from their tool list, and calling it reports *Unknown tool*. Only verified, stable claims count: unverified emails, display names and usernames are ignored. Rules apply over HTTP; a stdio server belongs to the local user. Group and role changes apply when the user's token refreshes.
 
-**Safe by default.** `serve` refuses to start without `public_url` (https, except for localhost), a resolvable `signing_key` and client secret, an Entra tenant GUID, or (for Google and GitHub) `auth.allow`. Clients may only redirect back to Claude, ChatGPT or loopback addresses; add others (e.g. Open WebUI's `https://<owui>/oauth/clients/mcp:*/callback`) with `oauth.redirect_uris`. Users approve each new client on a consent screen (`consent: remember` skips repeat prompts).
+**Safe by default.** `serve` refuses to start without `auth.allow` (otherwise anyone the identity provider signs in would get every tool: any Google or GitHub account, self-registered users, guests), `public_url` (https, except for localhost), a resolvable `signing_key` and client secret, or an Entra tenant GUID. Clients may only redirect back to Claude, ChatGPT or loopback addresses; add others (e.g. Open WebUI's `https://<owui>/oauth/clients/mcp:*/callback`) with `oauth.redirect_uris`. Users approve each new client on a consent screen (`consent: remember` skips repeat prompts).
 
 **Sessions** are stored encrypted under `FASTMCP_HOME` (default: the user data dir); in Docker, mount a volume there. They survive restarts as long as `signing_key` stays the same.
 
@@ -562,11 +562,13 @@ tools:
 - **ngrok** (`ngrok http 8765`): its free domain is stable.
 - **Cloudflare quick tunnels** change hostname on every run and don't stream: testing only, with `server.json_response: true`.
 
-**Audit log.** `server.audit_log` writes one JSON line per call: time, user, tool, arguments (secret args as `[REDACTED]`), ok, exit code, error and duration, including calls refused by access rules.
+**Coding agents** that do their own OAuth (Claude Code, Codex, Cursor, OpenCode) connect with `teukhos install --url <public_url>/mcp --key ""`; without `--key ""` they would send a static API-key header instead of logging in.
+
+**Audit log.** `server.audit_log` writes one JSON line per call: time, user (the verified email the rules use, else the subject), subject, tool, arguments (secret args as `[REDACTED]`), ok, exit code, error and duration. Calls refused by access rules or argument validation are recorded too, without their arguments.
 
 ### Browser Access (CORS and Origin)
 
-Requests that carry an `Origin` header (i.e. from a browser) are rejected with 403 unless the origin is listed in `server.cors_origins`. This blocks DNS-rebinding and other websites calling a local server; non-browser MCP clients send no `Origin` and are not affected. `"*"` allows every origin and turns that check off, so it needs `api_key` auth: over HTTP with `auth.mode: none`, `serve` refuses to start.
+Requests that carry an `Origin` header (i.e. from a browser) are rejected with 403 unless the origin is listed in `server.cors_origins`. This blocks DNS-rebinding and other websites calling a local server; non-browser MCP clients send no `Origin` and are not affected. `"*"` allows every origin and turns that check off, so it needs `api_key` auth: over HTTP with `auth.mode: none`, `serve` refuses to start. With `auth.mode: oauth`, the server's own `public_url` (the login consent form posts from it), `https://claude.ai` and `https://chatgpt.com` are always allowed.
 
 ### Deployment Behind a Reverse Proxy
 

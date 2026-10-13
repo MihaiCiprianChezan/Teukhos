@@ -215,8 +215,8 @@ class DestInstaller(JsonMcpInstaller):
         super().__init__()
         self.path = path
         self.config_key = config_key
-        if config_key == "servers":
-            self.stdio_type, self.http_type = "stdio", "http"
+        if config_key == "servers":  # VS Code format: typed entries, ${env:VAR}
+            self.stdio_type, self.http_type, self.env_ref = "stdio", "http", "${{env:{}}}"
 
     def default_path(self, scope: InstallScope) -> Path:
         return self.path

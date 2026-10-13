@@ -22,8 +22,10 @@ class OpenCodeInstaller(JsonMcpInstaller):
         return {"type": "local", "command": [teukhos_bin, "serve", str(teukhos_config_path)]}
 
     def http_entry(self, url: str, api_key: str | None) -> dict:
-        # oauth: false, or a 401 from a bad key starts OpenCode's OAuth discovery
-        entry: dict = {"type": "remote", "url": url, "oauth": False}
+        entry: dict = {"type": "remote", "url": url}
         if api_key:
+            # oauth: false, or a 401 from a bad key starts OpenCode's OAuth discovery; without a key
+            # (an OAuth server) OpenCode runs its own login
+            entry["oauth"] = False
             entry["headers"] = {"Authorization": f"Bearer {self.api_key_ref(api_key)}"}
         return entry

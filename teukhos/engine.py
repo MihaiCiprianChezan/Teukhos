@@ -9,8 +9,9 @@ from dataclasses import dataclass, field
 from typing import Any, Literal
 
 from fastmcp import FastMCP
-from fastmcp.exceptions import NotFoundError
+from fastmcp.exceptions import NotFoundError, ValidationError
 from fastmcp.server.auth import AuthProvider
+from fastmcp.server.dependencies import get_access_token
 from fastmcp.server.middleware import Middleware
 from fastmcp.tools import ToolResult
 from mcp.types import ToolAnnotations
@@ -18,15 +19,16 @@ from starlette.responses import JSONResponse
 
 from teukhos.adapters.base import AdapterResult
 from teukhos.adapters.cli import CLIAdapter
-from teukhos.access import auth_check
+from teukhos.access import auth_check, user_label
 from teukhos.audit import AuditLog
-from teukhos.auth import build_oauth_provider, current_user, resolve_key
+from teukhos.auth import build_oauth_provider, resolve_key
 from teukhos.config import (
     ARG_TYPE_MAP,
     ArgType,
     AuthMode,
     ForgeConfig,
     OutputConfig,
+    OAuthProviderType,
     OutputType,
     ToolConfig,
     TransportType,
@@ -51,27 +53,28 @@ def build_server(config: ForgeConfig, auth: AuthProvider | None = None) -> Serve
     if auth is None and oauth and config.server.transport == TransportType.http:
         auth = build_oauth_provider(oauth, config.server.public_url)
 
+    provider = oauth.provider if oauth else None
     audit = AuditLog(config.server.audit_log) if config.server.audit_log else None
     mcp = FastMCP(
         config.forge.name,
         version=config.forge.version,
         instructions=config.forge.description or None,
         auth=auth,
-        middleware=[_AuditRefused(audit)] if audit else None,
+        middleware=[_AuditRefused(audit, provider)] if audit else None,
     )
 
     for tool_config in config.tools:
         adapter = _create_adapter(tool_config)
         if adapter is None:
             continue
-        handler = _build_handler(tool_config, adapter, tool_config.output, audit)
+        handler = _build_handler(tool_config, adapter, tool_config.output, audit, provider)
         mcp.tool(
             name=tool_config.name,
             title=tool_config.title,
             description=tool_config.description,
             annotations=_annotations(tool_config),
             output_schema=None,  # text content only, not a duplicate structuredContent copy
-            auth=auth_check([config.auth.allow, tool_config.allow], oauth.provider) if oauth else None,
+            auth=auth_check([config.auth.allow, tool_config.allow], provider) if oauth else None,
         )(handler)
 
     @mcp.custom_route("/health", methods=["GET"])
@@ -95,19 +98,29 @@ def build_server(config: ForgeConfig, auth: AuthProvider | None = None) -> Serve
     )
 
 
-class _AuditRefused(Middleware):
-    """Audit calls that never reach a handler: tools the caller may not use are hidden, so
-    calling one fails as unknown (as does a call to a tool that does not exist)."""
+def _caller(provider: OAuthProviderType | None) -> dict[str, str | None]:
+    """Audit fields for the current caller: the identity access rules use, plus the stable subject."""
+    token = get_access_token()
+    return {"user": user_label(token, provider), "subject": token.subject if token else None}
 
-    def __init__(self, audit: AuditLog):
+
+class _AuditRefused(Middleware):
+    """Audit calls that never reach a handler: hidden (not allowed) and unknown tools, and
+    arguments refused by schema validation (wrong type, value outside an enum)."""
+
+    def __init__(self, audit: AuditLog, provider: OAuthProviderType | None):
         self.audit = audit
+        self.provider = provider
 
     async def on_call_tool(self, context, call_next):
         try:
             return await call_next(context)
-        except NotFoundError:
-            self.audit.record(user=current_user(), tool=context.message.name, args=None, ok=False,
-                              exit_code=None, error="unknown tool or not allowed", duration_ms=0)
+        except (NotFoundError, ValidationError) as e:
+            # args are not logged: they may hold secrets, and the name is client-chosen, so cap it
+            self.audit.record(**_caller(self.provider), tool=context.message.name[:200], args=None, ok=False,
+                              exit_code=None, duration_ms=0,
+                              error="unknown tool or not allowed" if isinstance(e, NotFoundError)
+                              else "invalid arguments")
             raise
 
 
@@ -137,6 +150,7 @@ def _build_handler(
     adapter: CLIAdapter,
     output_config: OutputConfig,
     audit: AuditLog | None = None,
+    provider: OAuthProviderType | None = None,
 ) -> Any:
     """Dynamically build an async handler function with typed parameters.
 
@@ -184,7 +198,7 @@ def _build_handler(
         response = _respond(result)
         if audit:
             audit.record(
-                user=current_user(),
+                **_caller(provider),
                 tool=tool_config.name,
                 args={
                     k: "[REDACTED]" if k in secret_names else (adapter.redact(v) if isinstance(v, str) else v)

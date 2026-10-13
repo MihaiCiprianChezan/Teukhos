@@ -26,8 +26,11 @@ def identity(token: AccessToken, provider: OAuthProviderType) -> Identity:
     def get(name: str):
         return claims.get(name) or upstream.get(name)
 
-    email = get("email") if claims.get("email_verified", True) is not False else None
-    email = str(email).lower() if email else None
+    # Absent: the provider vouches for the email (Entra, GitHub). Present: only true counts;
+    # Google sends the string "false" and None when unknown
+    verified = claims.get("email_verified", True)
+    email = get("email") if verified is True or str(verified).lower() == "true" else None
+    email = str(email).strip().lower() if email else None
     if provider == OAuthProviderType.google:
         # Workspace domain from Google's userinfo; no email-suffix fallback (gmail.com is not an org)
         domain = (claims.get("google_user_data") or {}).get("hd")
@@ -41,6 +44,15 @@ def identity(token: AccessToken, provider: OAuthProviderType) -> Identity:
 
     subjects = {str(v) for v in (claims.get("sub"), upstream.get("sub"), get("oid"), token.subject) if v}
     return Identity(email, domain.lower() if domain else None, frozenset(groups), frozenset(subjects))
+
+
+def user_label(token: AccessToken | None, provider: OAuthProviderType | None) -> str | None:
+    """Who made a call, for the audit log: the identity the rules use (verified email, else subject)."""
+    if token is None:
+        return None
+    if provider is None:
+        return token.subject
+    return identity(token, provider).email or token.subject
 
 
 def allows(rule: AccessRule, who: Identity) -> bool:

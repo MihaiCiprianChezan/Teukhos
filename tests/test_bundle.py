@@ -59,3 +59,28 @@ def test_env_secret_becomes_sensitive_user_setting(tmp_path):
         "type": "string", "title": "token", "description": "GitHub token", "sensitive": True, "required": True,
     }
     assert manifest["server"]["mcp_config"]["env"] == {"GH_TOKEN": "${user_config.gh_token}"}
+
+
+def test_pyproject_identity_is_fixed(tmp_path):
+    """A forge name like 'teukhos' (shadows the dependency) or version 'latest' must not reach uv."""
+    config = tmp_path / "teukhos.yaml"
+    config.write_text('forge:\n  name: teukhos\n  version: "latest\\" x"\ntools: []\n', encoding="utf-8")
+    out = tmp_path / "x.mcpb"
+    assert runner.invoke(app, ["bundle", str(config), "-o", str(out)]).exit_code == 0
+    project = tomllib.loads(_read(out)["pyproject.toml"].decode())["project"]
+    assert (project["name"], project["version"]) == ("teukhos-bundle", "0.0.0")
+
+
+def test_bundle_warns_about_literal_secrets(tmp_path):
+    config = tmp_path / "teukhos.yaml"
+    config.write_text(
+        "forge:\n  name: x\nauth:\n  api_keys: [plain-key]\n"
+        "tools:\n  - name: t\n    cli: {command: x}\n"
+        "    args:\n      - {name: token, flag: --t, secret: true, default: sk-literal}\n"
+        "      - {name: pin, flag: --p, secret: true, default: 'env:PIN'}\n",
+        encoding="utf-8",
+    )
+    result = runner.invoke(app, ["bundle", str(config), "-o", str(tmp_path / "x.mcpb")])
+    assert result.exit_code == 0
+    assert "tools.t.args.token" in result.output and "auth.api_keys" in result.output
+    assert "args.pin" not in result.output

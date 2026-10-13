@@ -582,6 +582,11 @@ def bundle(
         console.print(f"[bold red]Error:[/] {escape(str(e))}")
         raise typer.Exit(1)
 
+    from teukhos.bundle import literal_secrets
+
+    for where in literal_secrets(forge_config):
+        console.print(f"[bold yellow]Warning:[/] {escape(where)} is a literal secret and will ship inside "
+                      "the bundle; use env:VAR instead.")
     out = Path(output) if output else Path(f"{bundle_name(forge_config)}.mcpb")
     build_bundle(forge_config, config, out)
     console.print(f"[bold green]Built![/] {escape(str(out.resolve()))}")
@@ -625,7 +630,11 @@ def _print_banner(config: object, resolved_keys: int = 0) -> None:
     # Connection hint for HTTP
     if config.server.transport == TransportType.http:
         banner.add_row("", "")
-        banner.add_row("[bold]Connect:[/]", f"teukhos install --url http://HOST:{config.server.port}/mcp")
+        if auth_mode == "oauth":
+            hint = f'teukhos install --url {config.server.public_url}/mcp --key ""'
+        else:
+            hint = f"teukhos install --url http://HOST:{config.server.port}/mcp"
+        banner.add_row("[bold]Connect:[/]", escape(hint))
 
     console.print(Panel(banner, title="[bold]Teukhos MCP Server[/]", border_style="cyan"))
 

@@ -25,9 +25,9 @@ class AuditLog:
         self._lock = threading.Lock()
 
     def record(self, **entry: Any) -> None:
+        # ASCII-escaped (json default), so values can't carry U+2028 etc. that some readers split on
         line = json.dumps(
             {"time": datetime.now(timezone.utc).isoformat(timespec="milliseconds"), **entry},
-            ensure_ascii=False,
             default=str,
         )
         try:

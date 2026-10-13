@@ -334,6 +334,7 @@ class TestErrorHandling:
         client = _make_server([tool])
         async with client:
             result = await client.call_tool_mcp("missing_cmd", {})
+            assert result.is_error
             text = result.content[0].text
             assert "not found" in text.lower() or "error" in text.lower()
 
@@ -353,6 +354,7 @@ class TestErrorHandling:
         client = _make_server([tool])
         async with client:
             result = await client.call_tool_mcp("fail_tool", {})
+            assert result.is_error
             text = result.content[0].text
             assert "Error" in text or "oops" in text
 
@@ -373,6 +375,7 @@ class TestErrorHandling:
         client = _make_server([tool])
         async with client:
             result = await client.call_tool_mcp("slow_tool", {})
+            assert result.is_error
             text = result.content[0].text
             assert "timed out" in text.lower() or "timeout" in text.lower()
 
@@ -732,7 +735,9 @@ class TestArgumentPolicy:
             assert "token" not in props
 
             for code in (0, 3):
-                text = (await client.call_tool("secret_tool", {"code": code})).content[0].text
+                result = await client.call_tool("secret_tool", {"code": code}, raise_on_error=False)
+                assert result.is_error == (code != 0)
+                text = result.content[0].text
                 assert "sk-CONFIG-SECRET" not in text
                 assert "[REDACTED]" in text
 
@@ -746,7 +751,8 @@ class TestArgumentPolicy:
         tool = _argv_tool("pos_tool", [ArgConfig(name="path", positional=True, required=True)])
         client = _make_server([tool])
         async with client:
-            result = await client.call_tool("pos_tool", {"path": "--output=/tmp/x"})
+            result = await client.call_tool("pos_tool", {"path": "--output=/tmp/x"}, raise_on_error=False)
+            assert result.is_error
             assert "must not start with '-'" in result.content[0].text
 
     @pytest.mark.asyncio
@@ -759,7 +765,8 @@ class TestArgumentPolicy:
         )
         client = _make_server([tool])
         async with client:
-            result = await client.call_tool("slow_exit_code", {})
+            result = await client.call_tool("slow_exit_code", {}, raise_on_error=False)
+            assert result.is_error
             assert "timed out" in result.content[0].text
 
     @pytest.mark.asyncio
@@ -795,8 +802,9 @@ class TestOutputEdgeCases:
         )
         client = _make_server([tool])
         async with client:
-            text = (await client.call_tool("big_json", {})).content[0].text
-            assert "max_output_bytes" in text
+            result = await client.call_tool("big_json", {}, raise_on_error=False)
+            assert result.is_error
+            assert "max_output_bytes" in result.content[0].text
 
     @pytest.mark.asyncio
     async def test_json_field_non_ascii_secret_redacted(self):

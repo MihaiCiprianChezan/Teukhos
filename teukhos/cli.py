@@ -302,85 +302,36 @@ def install(
     Use --dest to write directly to any JSON file (bypasses client detection).
     """
     from teukhos.installers import discover_clients, get_all_installers, get_installer
-    from teukhos.installers.base import InstallScope
+    from teukhos.installers.base import DestInstaller, InstallScope
 
     scope = InstallScope.project if project else InstallScope.global_
     transport_mode = "http" if url else "stdio"
 
-    # --dest mode: write directly to an arbitrary JSON file
-    if dest:
-        from teukhos.installers.base import (
-            atomic_write_json,
-            merge_mcp_entry,
-            read_json_config,
-        )
-        import shutil
-
-        dest_path = Path(dest).resolve()
-        console.print(f"[dim]Target: {escape(str(dest_path))} (config-key: {escape(config_key)})[/]")
-
-        # Resolve server name
-        if not url:
-            config_path = _resolve_config(config).resolve()
-            if not config_path.exists():
-                console.print(f"[bold red]Error:[/] Config file not found: {escape(str(config_path))}")
-                raise typer.Exit(1)
+    # Server name from the config; stdio also needs the config path the client will run
+    config_path = _resolve_config(config)
+    if not url:
+        config_path = config_path.resolve()
+        if not config_path.exists():
+            console.print(f"[bold red]Error:[/] Config file not found: {escape(str(config_path))}")
+            raise typer.Exit(1)
+        try:
+            server_name = f"teukhos-{load_config(config_path).forge.name}"
+        except Exception as e:
+            console.print(f"[bold red]Error:[/] {escape(str(e))}")
+            raise typer.Exit(1)
+        console.print(f"[dim]Config: {escape(str(config_path))}[/]")
+    else:
+        server_name = "teukhos-remote"
+        if config_path.exists():
             try:
-                forge_config = load_config(config_path)
-            except Exception as e:
-                console.print(f"[bold red]Error:[/] {escape(str(e))}")
-                raise typer.Exit(1)
-            server_name = f"teukhos-{forge_config.forge.name}"
-            console.print(f"[dim]Config: {escape(str(config_path))}[/]")
-        else:
-            config_path = _resolve_config(config)
-            if config_path.exists():
-                try:
-                    forge_config = load_config(config_path)
-                    server_name = f"teukhos-{forge_config.forge.name}"
-                except Exception:
-                    server_name = "teukhos-remote"
-            else:
-                server_name = "teukhos-remote"
-
-        # Build entry
-        existing = read_json_config(dest_path)
-        if url:
-            entry: dict = {"url": url}
-            if config_key == "servers":
-                entry["type"] = "http"
-            if key and key != "env:TEUKHOS_API_KEY":
-                if key.startswith("env:"):
-                    env_var = key[4:]
-                    entry["headers"] = {"Authorization": f"Bearer ${{{env_var}}}"}
-                else:
-                    entry["headers"] = {"Authorization": f"Bearer {key}"}
-            elif key == "env:TEUKHOS_API_KEY":
-                entry["headers"] = {"Authorization": "Bearer ${TEUKHOS_API_KEY}"}
-        else:
-            teukhos_bin = shutil.which("teukhos") or "teukhos"
-            entry = {
-                "command": teukhos_bin,
-                "args": ["serve", str(config_path)],
-            }
-            if config_key == "servers":
-                entry["type"] = "stdio"
-
-        merge_mcp_entry(existing, server_name, entry, key=config_key)
-        atomic_write_json(dest_path, existing)
-
-        console.print()
-        console.print(f"[bold green]Installed![/] MCP server registered successfully.")
-        console.print(f"  Server name:  {escape(server_name)}")
-        console.print(f"  Transport:    {transport_mode}")
-        console.print(f"  Config key:   {escape(config_key)}")
-        console.print(f"  Written to:   {escape(str(dest_path))}")
-        if url:
-            console.print(f"  URL:          {escape(url)}")
-        return
+                server_name = f"teukhos-{load_config(config_path).forge.name}"
+            except Exception:
+                pass
 
     # Determine target installers
-    if client:
+    if dest:
+        targets = [DestInstaller(Path(dest).resolve(), config_key)]
+    elif client:
         inst = get_installer(client)
         if inst is None:
             console.print(f"[bold red]Error:[/] Unknown client '{escape(client)}'.")
@@ -426,31 +377,6 @@ def install(
             except ValueError:
                 console.print("[bold red]Invalid choice.[/]")
                 raise typer.Exit(1)
-
-    # Resolve config for stdio mode
-    if not url:
-        config_path = _resolve_config(config).resolve()
-        if not config_path.exists():
-            console.print(f"[bold red]Error:[/] Config file not found: {escape(str(config_path))}")
-            raise typer.Exit(1)
-        try:
-            forge_config = load_config(config_path)
-        except Exception as e:
-            console.print(f"[bold red]Error:[/] {escape(str(e))}")
-            raise typer.Exit(1)
-        server_name = f"teukhos-{forge_config.forge.name}"
-        console.print(f"[dim]Config: {escape(str(config_path))}[/]")
-    else:
-        # HTTP mode -- server_name derived from URL or config if available
-        config_path = _resolve_config(config)
-        if config_path.exists():
-            try:
-                forge_config = load_config(config_path)
-                server_name = f"teukhos-{forge_config.forge.name}"
-            except Exception:
-                server_name = "teukhos-remote"
-        else:
-            server_name = "teukhos-remote"
 
     # Install
     console.print()

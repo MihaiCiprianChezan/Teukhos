@@ -125,9 +125,19 @@ class ShellAdapterConfig(_Model):
     env: dict[str, str] = Field(default_factory=dict)
 
 
+class ToolAnnotationsConfig(_Model):
+    """Behaviour hints clients act on, e.g. auto-approving or running read-only tools in parallel."""
+    read_only: bool | None = None
+    destructive: bool | None = None
+    idempotent: bool | None = None
+    open_world: bool | None = None
+
+
 class ToolConfig(_Model):
     name: str
+    title: str | None = None
     description: str = ""
+    annotations: ToolAnnotationsConfig | None = None
     adapter: str = "cli"
     cli: CLIAdapterConfig | None = None
     shell: ShellAdapterConfig | None = None

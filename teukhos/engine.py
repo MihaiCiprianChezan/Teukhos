@@ -7,11 +7,13 @@ from dataclasses import dataclass, field
 from typing import Any, Literal
 
 from fastmcp import FastMCP
+from fastmcp.tools import ToolResult
+from mcp.types import ToolAnnotations
 from starlette.responses import JSONResponse
 
 from teukhos.adapters.cli import CLIAdapter
 from teukhos.config import ARG_TYPE_MAP, ArgType, AuthMode, ForgeConfig, OutputConfig, OutputType, ToolConfig
-from teukhos.output import OutputMapper
+from teukhos.output import OutputMapper, OutputMappingError
 
 
 @dataclass
@@ -24,15 +26,24 @@ class ServerBundle:
 
 def build_server(config: ForgeConfig) -> ServerBundle:
     """Build a FastMCP server from a ForgeConfig."""
-    mcp = FastMCP(config.forge.name)
+    mcp = FastMCP(
+        config.forge.name,
+        version=config.forge.version,
+        instructions=config.forge.description or None,
+    )
 
     for tool_config in config.tools:
         adapter = _create_adapter(tool_config)
         if adapter is None:
             continue
         handler = _build_handler(tool_config, adapter, tool_config.output)
-        # output_schema=None: return text content only, not a duplicate structuredContent copy
-        mcp.tool(name=tool_config.name, description=tool_config.description, output_schema=None)(handler)
+        mcp.tool(
+            name=tool_config.name,
+            title=tool_config.title,
+            description=tool_config.description,
+            annotations=_annotations(tool_config),
+            output_schema=None,  # text content only, not a duplicate structuredContent copy
+        )(handler)
 
     @mcp.custom_route("/health", methods=["GET"])
     async def _health(request: Any) -> JSONResponse:
@@ -56,6 +67,18 @@ def build_server(config: ForgeConfig) -> ServerBundle:
         mcp=mcp,
         resolved_auth_keys=resolved_keys,
         cors_origins=config.server.cors_origins,
+    )
+
+
+def _annotations(tool_config: ToolConfig) -> ToolAnnotations | None:
+    a = tool_config.annotations
+    if a is None:
+        return None
+    return ToolAnnotations(
+        read_only_hint=a.read_only,
+        destructive_hint=a.destructive,
+        idempotent_hint=a.idempotent,
+        open_world_hint=a.open_world,
     )
 
 
@@ -106,20 +129,29 @@ def _build_handler(
 
     annotations["return"] = str
 
-    async def _handler(**kwargs: Any) -> str:
+    def _error(text: str) -> ToolResult:
+        # isError lets the client tell a failed call from a result; returning it (rather than
+        # raising ToolError) keeps expected tool failures out of the server log
+        return ToolResult(content=adapter.redact(text), is_error=True)
+
+    async def _handler(**kwargs: Any) -> str | ToolResult:
         result = await adapter.execute(**kwargs)
         if result.failed:  # timeout, not found, rejected args
-            return result.stderr
+            return _error(result.stderr)
         if result.exit_code != 0 and output_config.type != OutputType.exit_code:
             error_msg = result.stderr.strip() or result.stdout.strip()
-            return f"Error (exit code {result.exit_code}): {error_msg}"
+            return _error(f"Error (exit code {result.exit_code}): {error_msg}")
         if result.truncated and output_config.type == OutputType.json_field:
-            return (
+            return _error(
                 f"Error: output exceeds cli.max_output_bytes ({tool_config.cli.max_output_bytes}); "
                 "raise it for this tool to parse the JSON"
             )
+        try:
+            text = mapper.map(result.stdout, result.stderr, result.exit_code)
+        except OutputMappingError as e:
+            return _error(str(e))
         # Output was redacted by the adapter; again here because mapping can re-encode values
-        return adapter.redact(mapper.map(result.stdout, result.stderr, result.exit_code))
+        return adapter.redact(text)
 
     sig = inspect.Signature(parameters=params, return_annotation=str)
     _handler.__signature__ = sig  # type: ignore[attr-defined]

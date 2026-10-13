@@ -8,10 +8,6 @@ class KiroInstaller(JsonMcpInstaller):
     slug = "kiro"
     supported_scopes = [InstallScope.global_, InstallScope.project]
 
-    def config_path(self, scope: InstallScope) -> Path:
-        if self._config_path_override and scope in self._config_path_override:
-            return self._config_path_override[scope]
-        effective = self._effective_scope(scope)
-        if effective == InstallScope.project:
-            return self.cwd / ".kiro" / "settings" / "mcp.json"
-        return Path.home() / ".kiro" / "settings" / "mcp.json"
+    def default_path(self, scope: InstallScope) -> Path:
+        root = self.cwd if scope == InstallScope.project else Path.home()
+        return root / ".kiro" / "settings" / "mcp.json"

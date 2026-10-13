@@ -322,3 +322,16 @@ def test_msys_noglob_set():
     import teukhos.adapters.cli  # noqa: F401  (sets the variables on import)
     assert "noglob" in os.environ["MSYS"]
     assert "noglob" in os.environ["CYGWIN"]
+
+
+@pytest.mark.asyncio
+async def test_secret_default_from_environment(monkeypatch):
+    """default: env:VAR keeps the credential out of the YAML; it is resolved per call and redacted."""
+    adapter = _argv_adapter(ArgConfig(name="token", flag="--token", secret=True, default="env:TK_TEST_TOKEN"))
+    monkeypatch.delenv("TK_TEST_TOKEN", raising=False)
+    missing = await adapter.execute()
+    assert missing.exit_code == -1 and "TK_TEST_TOKEN is not set" in missing.stderr
+    monkeypatch.setenv("TK_TEST_TOKEN", "sk-from-env")
+    result = await adapter.execute()
+    assert result.exit_code == 0
+    assert "sk-from-env" not in result.stdout and "[REDACTED]" in result.stdout

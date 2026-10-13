@@ -35,18 +35,12 @@ class CodexInstaller(BaseInstaller):
     slug = "codex"
     supported_scopes = [InstallScope.global_, InstallScope.project]
 
-    _config_path_override: dict[InstallScope, Path] | None = None
-
     def detect(self) -> bool:
         return self.config_path(InstallScope.global_).parent.exists()
 
-    def config_path(self, scope: InstallScope) -> Path:
-        if self._config_path_override and scope in self._config_path_override:
-            return self._config_path_override[scope]
-        effective = self._effective_scope(scope)
-        if effective == InstallScope.project:
-            return self.cwd / ".codex" / "config.toml"
-        return Path.home() / ".codex" / "config.toml"
+    def default_path(self, scope: InstallScope) -> Path:
+        root = self.cwd if scope == InstallScope.project else Path.home()
+        return root / ".codex" / "config.toml"
 
     def install_stdio(self, server_name: str, teukhos_config_path: Path,
                       scope: InstallScope = InstallScope.global_) -> None:

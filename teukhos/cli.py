@@ -12,7 +12,7 @@ from rich.panel import Panel
 from rich.table import Table
 
 from teukhos import __version__
-from teukhos.config import AuthMode, TransportType, load_config
+from teukhos.config import LOOPBACK_HOSTS, AuthMode, TransportType, load_config
 
 def _version_callback(value: bool) -> None:
     if value:
@@ -43,8 +43,6 @@ def main(
 # Accept both the new teukhos.yaml and the legacy mcp-forge.yaml names
 DEFAULT_CONFIG = "teukhos.yaml"
 LEGACY_CONFIG = "mcp-forge.yaml"
-
-LOOPBACK_HOSTS = ("127.0.0.1", "localhost", "::1")
 
 
 def _resolve_config(path: Path) -> Path:
@@ -135,7 +133,11 @@ def serve(
 
     from teukhos.engine import build_server
 
-    bundle = build_server(forge_config)
+    try:
+        bundle = build_server(forge_config)
+    except Exception as e:  # e.g. an unset env: value, or the identity provider is unreachable
+        console.print(f"[bold red]Error:[/] {escape(str(e))}")
+        raise typer.Exit(1)
     mcp = bundle.mcp
 
     # Fail closed: api_key auth without a resolvable key must not serve unauthenticated
@@ -154,10 +156,15 @@ def serve(
 
         from teukhos.auth import AuthMiddleware, OriginMiddleware
 
+        allowed_origins = list(bundle.cors_origins or [])
+        if forge_config.auth.mode == AuthMode.oauth:
+            # The login consent form posts from our own origin; Claude and ChatGPT call from theirs
+            allowed_origins += [server.public_url, "https://claude.ai", "https://chatgpt.com"]
+
         # First entry is outermost: reject foreign origins, then answer CORS
-        # preflights, then authenticate.
+        # preflights, then authenticate (OAuth mode: fastmcp guards /mcp itself).
         middleware: list[Middleware] = [
-            Middleware(OriginMiddleware, allowed_origins=bundle.cors_origins)
+            Middleware(OriginMiddleware, allowed_origins=allowed_origins)
         ]
 
         if bundle.cors_origins:
@@ -183,11 +190,14 @@ def serve(
                 Middleware(AuthMiddleware, api_keys=bundle.resolved_auth_keys)
             )
 
+        # JSON instead of SSE responses, for proxies that can't stream (Cloudflare quick tunnels)
+        streaming = {"json_response": True, "stateless_http": True} if server.json_response else {}
         mcp.run(
             transport="streamable-http",
             host=server.host,
             port=server.port,
             middleware=middleware,
+            **streaming,
         )
     else:
         mcp.run(transport="stdio")
@@ -302,85 +312,36 @@ def install(
     Use --dest to write directly to any JSON file (bypasses client detection).
     """
     from teukhos.installers import discover_clients, get_all_installers, get_installer
-    from teukhos.installers.base import InstallScope
+    from teukhos.installers.base import DestInstaller, InstallScope
 
     scope = InstallScope.project if project else InstallScope.global_
     transport_mode = "http" if url else "stdio"
 
-    # --dest mode: write directly to an arbitrary JSON file
-    if dest:
-        from teukhos.installers.base import (
-            atomic_write_json,
-            merge_mcp_entry,
-            read_json_config,
-        )
-        import shutil
-
-        dest_path = Path(dest).resolve()
-        console.print(f"[dim]Target: {escape(str(dest_path))} (config-key: {escape(config_key)})[/]")
-
-        # Resolve server name
-        if not url:
-            config_path = _resolve_config(config).resolve()
-            if not config_path.exists():
-                console.print(f"[bold red]Error:[/] Config file not found: {escape(str(config_path))}")
-                raise typer.Exit(1)
+    # Server name from the config; stdio also needs the config path the client will run
+    config_path = _resolve_config(config)
+    if not url:
+        config_path = config_path.resolve()
+        if not config_path.exists():
+            console.print(f"[bold red]Error:[/] Config file not found: {escape(str(config_path))}")
+            raise typer.Exit(1)
+        try:
+            server_name = f"teukhos-{load_config(config_path).forge.name}"
+        except Exception as e:
+            console.print(f"[bold red]Error:[/] {escape(str(e))}")
+            raise typer.Exit(1)
+        console.print(f"[dim]Config: {escape(str(config_path))}[/]")
+    else:
+        server_name = "teukhos-remote"
+        if config_path.exists():
             try:
-                forge_config = load_config(config_path)
-            except Exception as e:
-                console.print(f"[bold red]Error:[/] {escape(str(e))}")
-                raise typer.Exit(1)
-            server_name = f"teukhos-{forge_config.forge.name}"
-            console.print(f"[dim]Config: {escape(str(config_path))}[/]")
-        else:
-            config_path = _resolve_config(config)
-            if config_path.exists():
-                try:
-                    forge_config = load_config(config_path)
-                    server_name = f"teukhos-{forge_config.forge.name}"
-                except Exception:
-                    server_name = "teukhos-remote"
-            else:
-                server_name = "teukhos-remote"
-
-        # Build entry
-        existing = read_json_config(dest_path)
-        if url:
-            entry: dict = {"url": url}
-            if config_key == "servers":
-                entry["type"] = "http"
-            if key and key != "env:TEUKHOS_API_KEY":
-                if key.startswith("env:"):
-                    env_var = key[4:]
-                    entry["headers"] = {"Authorization": f"Bearer ${{{env_var}}}"}
-                else:
-                    entry["headers"] = {"Authorization": f"Bearer {key}"}
-            elif key == "env:TEUKHOS_API_KEY":
-                entry["headers"] = {"Authorization": "Bearer ${TEUKHOS_API_KEY}"}
-        else:
-            teukhos_bin = shutil.which("teukhos") or "teukhos"
-            entry = {
-                "command": teukhos_bin,
-                "args": ["serve", str(config_path)],
-            }
-            if config_key == "servers":
-                entry["type"] = "stdio"
-
-        merge_mcp_entry(existing, server_name, entry, key=config_key)
-        atomic_write_json(dest_path, existing)
-
-        console.print()
-        console.print(f"[bold green]Installed![/] MCP server registered successfully.")
-        console.print(f"  Server name:  {escape(server_name)}")
-        console.print(f"  Transport:    {transport_mode}")
-        console.print(f"  Config key:   {escape(config_key)}")
-        console.print(f"  Written to:   {escape(str(dest_path))}")
-        if url:
-            console.print(f"  URL:          {escape(url)}")
-        return
+                server_name = f"teukhos-{load_config(config_path).forge.name}"
+            except Exception:
+                pass
 
     # Determine target installers
-    if client:
+    if dest:
+        targets = [DestInstaller(Path(dest).resolve(), config_key)]
+    elif client:
         inst = get_installer(client)
         if inst is None:
             console.print(f"[bold red]Error:[/] Unknown client '{escape(client)}'.")
@@ -426,31 +387,6 @@ def install(
             except ValueError:
                 console.print("[bold red]Invalid choice.[/]")
                 raise typer.Exit(1)
-
-    # Resolve config for stdio mode
-    if not url:
-        config_path = _resolve_config(config).resolve()
-        if not config_path.exists():
-            console.print(f"[bold red]Error:[/] Config file not found: {escape(str(config_path))}")
-            raise typer.Exit(1)
-        try:
-            forge_config = load_config(config_path)
-        except Exception as e:
-            console.print(f"[bold red]Error:[/] {escape(str(e))}")
-            raise typer.Exit(1)
-        server_name = f"teukhos-{forge_config.forge.name}"
-        console.print(f"[dim]Config: {escape(str(config_path))}[/]")
-    else:
-        # HTTP mode -- server_name derived from URL or config if available
-        config_path = _resolve_config(config)
-        if config_path.exists():
-            try:
-                forge_config = load_config(config_path)
-                server_name = f"teukhos-{forge_config.forge.name}"
-            except Exception:
-                server_name = "teukhos-remote"
-        else:
-            server_name = "teukhos-remote"
 
     # Install
     console.print()
@@ -627,6 +563,40 @@ def discover(
     console.print(f"[dim]{len(result.tools)} tool(s) discovered.[/]")
 
 
+@app.command()
+def bundle(
+    config: Annotated[
+        Path, typer.Argument(help="Path to teukhos.yaml config file")
+    ] = Path(DEFAULT_CONFIG),
+    output: Annotated[
+        Optional[str], typer.Option("--output", "-o", help="Output file (default: <name>.mcpb)")
+    ] = None,
+) -> None:
+    """Build a Claude Desktop extension (.mcpb) that installs this config with a double-click."""
+    from teukhos.bundle import build_bundle, bundle_name
+
+    config = _resolve_config(config)
+    try:
+        forge_config = load_config(config)
+    except Exception as e:
+        console.print(f"[bold red]Error:[/] {escape(str(e))}")
+        raise typer.Exit(1)
+
+    from teukhos.bundle import literal_secrets
+
+    for where in literal_secrets(forge_config):
+        console.print(f"[bold yellow]Warning:[/] {escape(where)} is a literal secret and will ship inside "
+                      "the bundle; use env:VAR instead.")
+    out = Path(output) if output else Path(f"{bundle_name(forge_config)}.mcpb")
+    build_bundle(forge_config, config, out)
+    console.print(f"[bold green]Built![/] {escape(str(out.resolve()))}")
+    console.print(
+        "[dim]Install: double-click it, or Claude Desktop > Settings > Extensions > Install Extension.\n"
+        "Claude Desktop installs Teukhos from PyPI on first use (needs internet); the CLIs the tools\n"
+        "wrap must already be on the user's PATH. The bundle is unsigned.[/]"
+    )
+
+
 def _print_banner(config: object, resolved_keys: int = 0) -> None:
     """Print a startup banner with server info."""
     from teukhos.config import ForgeConfig
@@ -650,13 +620,21 @@ def _print_banner(config: object, resolved_keys: int = 0) -> None:
     if auth_mode == "api_key":
         configured = len(config.auth.api_keys)
         banner.add_row("[bold]Auth:[/]", f"api_key ({resolved_keys} of {configured} key(s) resolved)")
+    elif auth_mode == "oauth":
+        banner.add_row("[bold]Auth:[/]", f"oauth ({config.auth.oauth.provider.value})")
+        banner.add_row("[bold]MCP URL:[/]", escape(f"{config.server.public_url}/mcp"))
+        banner.add_row("[bold]IdP redirect:[/]", escape(f"{config.server.public_url}/auth/callback"))
     else:
         banner.add_row("[bold]Auth:[/]", auth_mode)
 
     # Connection hint for HTTP
     if config.server.transport == TransportType.http:
         banner.add_row("", "")
-        banner.add_row("[bold]Connect:[/]", f"teukhos install --url http://HOST:{config.server.port}/mcp")
+        if auth_mode == "oauth":
+            hint = f'teukhos install --url {config.server.public_url}/mcp --key ""'
+        else:
+            hint = f"teukhos install --url http://HOST:{config.server.port}/mcp"
+        banner.add_row("[bold]Connect:[/]", escape(hint))
 
     console.print(Panel(banner, title="[bold]Teukhos MCP Server[/]", border_style="cyan"))
 

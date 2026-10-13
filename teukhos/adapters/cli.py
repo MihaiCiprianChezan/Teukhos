@@ -76,11 +76,18 @@ class CLIAdapter(BaseAdapter):
     def __init__(self, cli_config: CLIAdapterConfig, arg_configs: list[ArgConfig]):
         self.cli_config = cli_config
         self.arg_configs = {a.name: a for a in arg_configs}
-        # Operator-held secret defaults, longest first so overlapping values are fully replaced
-        self.secrets = sorted(
-            {a.default for a in arg_configs if a.secret and isinstance(a.default, str) and a.default},
-            key=len, reverse=True,
-        )
+
+    @property
+    def secrets(self) -> list[str]:
+        """Operator-held secret defaults (env: ones resolved), longest first so overlapping
+        values are fully replaced."""
+        values = set()
+        for a in self.arg_configs.values():
+            if a.secret:
+                value = os.environ.get(a.env_default) if a.env_default else a.default
+                if isinstance(value, str) and value:
+                    values.add(value)
+        return sorted(values, key=len, reverse=True)
 
     def redact(self, text: str) -> str:
         for secret in self.secrets:
@@ -162,6 +169,12 @@ class CLIAdapter(BaseAdapter):
             value = kwargs.get(arg_name, arg_config.default)
             if value is None:
                 continue
+            from_config = value == arg_config.default
+            if from_config and arg_config.env_default:
+                value = os.environ.get(arg_config.env_default)
+                if not value:
+                    raise ValueError(f"Argument '{arg_name}': environment variable "
+                                     f"{arg_config.env_default} is not set")
 
             # A bare value starting with '-' would be parsed as an option (argument injection).
             # Enum values and the configured default are chosen by the operator, so they are trusted.
@@ -169,7 +182,7 @@ class CLIAdapter(BaseAdapter):
                 (arg_config.positional or not arg_config.flag)
                 and arg_config.type != ArgType.boolean
                 and not arg_config.enum
-                and value != arg_config.default
+                and not from_config
                 and (str(value).startswith("-") or (os.name == "nt" and _ansi_view(str(value)).startswith("-")))
             ):
                 raise ValueError(f"Argument '{arg_name}' must not start with '-'")

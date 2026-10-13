@@ -7,6 +7,10 @@ import json
 from teukhos.config import OutputConfig, OutputType
 
 
+class OutputMappingError(ValueError):
+    """The output could not be mapped (e.g. not JSON, field missing); reported as a tool error."""
+
+
 class OutputMapper:
     """Maps subprocess output to the configured response format."""
 
@@ -33,7 +37,7 @@ class OutputMapper:
         try:
             data = json.loads(stdout)
         except json.JSONDecodeError:
-            return f"Error: output is not valid JSON:\n{stdout[:500]}"
+            raise OutputMappingError(f"Error: output is not valid JSON:\n{stdout[:500]}") from None
         parts = self.config.field.split(".")
         current = data
         for part in parts:
@@ -44,9 +48,9 @@ class OutputMapper:
                 if 0 <= idx < len(current):
                     current = current[idx]
                 else:
-                    return f"Error: index {idx} out of range in field '{self.config.field}'"
+                    raise OutputMappingError(f"Error: index {idx} out of range in field '{self.config.field}'")
             else:
-                return f"Error: field '{self.config.field}' not found in JSON output"
+                raise OutputMappingError(f"Error: field '{self.config.field}' not found in JSON output")
         if isinstance(current, (dict, list)):
             return json.dumps(current, indent=2, ensure_ascii=False)
         return str(current)

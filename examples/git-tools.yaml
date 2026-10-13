@@ -9,6 +9,7 @@ server:
 tools:
   - name: ping
     description: "Health check - returns server name and version"
+    annotations: { read_only: true, open_world: false }  # clients may auto-approve read-only tools
     adapter: cli
     cli:
       command: python
@@ -21,6 +22,7 @@ tools:
 
   - name: git_log
     description: "Show recent git commits"
+    annotations: { read_only: true, open_world: false }  # clients may auto-approve read-only tools
     adapter: cli
     cli:
       command: git
@@ -37,6 +39,7 @@ tools:
 
   - name: git_status
     description: "Show working tree status"
+    annotations: { read_only: true, open_world: false }  # clients may auto-approve read-only tools
     adapter: cli
     cli:
       command: git
@@ -46,6 +49,7 @@ tools:
 
   - name: git_diff
     description: "Show diff of current changes"
+    annotations: { read_only: true, open_world: false }  # clients may auto-approve read-only tools
     adapter: cli
     cli:
       command: git
@@ -61,6 +65,7 @@ tools:
 
   - name: git_branch
     description: "List git branches"
+    annotations: { read_only: true, open_world: false }  # clients may auto-approve read-only tools
     adapter: cli
     cli:
       command: git

@@ -89,7 +89,9 @@ async def test_invalid_args_error_handling():
     bundle = build_server(config)
     tool = await bundle.mcp.get_tool("fail_tool")
     result = await tool.fn(path="/nonexistent/path/that/does/not/exist")
-    assert "Error" in result or "No such file" in result or "cannot find" in result.lower()
+    assert result.is_error
+    text = result.content[0].text
+    assert "Error" in text or "No such file" in text or "cannot find" in text.lower()
 
 
 @pytest.mark.asyncio

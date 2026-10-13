@@ -1,7 +1,9 @@
 """Tests for output mapping."""
 
 from teukhos.config import OutputConfig, OutputType
-from teukhos.output import OutputMapper
+import pytest
+
+from teukhos.output import OutputMapper, OutputMappingError
 
 
 def test_stdout_mapping():
@@ -36,14 +38,14 @@ def test_json_field_array_index():
 
 def test_json_field_not_found():
     mapper = OutputMapper(OutputConfig(type=OutputType.json_field, field="missing"))
-    result = mapper.map('{"name": "test"}', "", 0)
-    assert "not found" in result
+    with pytest.raises(OutputMappingError, match="not found"):
+        mapper.map('{"name": "test"}', "", 0)
 
 
 def test_json_field_invalid_json():
     mapper = OutputMapper(OutputConfig(type=OutputType.json_field, field="name"))
-    result = mapper.map("not json at all", "", 0)
-    assert "not valid JSON" in result
+    with pytest.raises(OutputMappingError, match="not valid JSON"):
+        mapper.map("not json at all", "", 0)
 
 
 def test_json_field_returns_object():

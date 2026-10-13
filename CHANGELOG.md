@@ -5,6 +5,38 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [Unreleased]
+
+### Added
+- **OAuth login (`auth.mode: oauth`)** through Microsoft Entra ID, Google, GitHub or any OIDC provider (Okta, Keycloak, Auth0, ...), so claude.ai, the Claude mobile apps and ChatGPT can use a Teukhos server over public HTTPS. Teukhos runs fastmcp's OAuth proxy; the identity provider needs one redirect URI, `<public_url>/auth/callback`, and Claude/ChatGPT register themselves (CIMD, or DCR as a fallback). New `server.public_url`. Fails closed: `auth.allow` is required (otherwise anyone the identity provider signs in gets every tool), https only (except localhost), Entra tenant GUID, required `signing_key`, client redirect URIs limited to Claude, ChatGPT and loopback unless `oauth.redirect_uris` adds more.
+- **Access rules:** `auth.allow` (whole server) and `tools[].allow` (per tool) match `emails`, `domains` (Google Workspace `hd`), `groups` (groups or roles claim) and `subjects` (stable ids). A tool someone may not use is hidden from their tool list; calling it reports "Unknown tool" and is audited. Only verified, immutable claims count (Google's string `email_verified: "false"` included). In OAuth mode the Origin check also allows `public_url`, `https://claude.ai` and `https://chatgpt.com`.
+- **`teukhos bundle`:** builds a Claude Desktop extension (`.mcpb`) from a config, for a double-click install. Claude Desktop installs Teukhos from PyPI with its own `uv`; secret args with `default: env:VAR` become masked user settings.
+- **Secret defaults from the environment:** `secret: true` with `default: env:VAR` keeps a credential out of the YAML; it is read per call and redacted like a literal secret.
+- **LM Studio installer** (`--client lm-studio`).
+- `server.json_response: true` serves plain JSON responses, stateless (no MCP session), for proxies that cannot stream (Cloudflare quick tunnels).
+- README: "Use from Chat Apps" (Claude Desktop, LM Studio, Open WebUI, claude.ai, ChatGPT and its Secure MCP Tunnel) and "Remote Access with OAuth" (per-provider setup, rules, public HTTPS options).
+- **Audit log:** `server.audit_log: <path>` writes one JSON line per tool call: time, user (OAuth: the verified email the access rules use, else the subject), subject, tool, arguments (secret args shown as `[REDACTED]`), ok, exit code, error and duration. Calls refused by access rules or argument validation are recorded without their arguments. The path is checked at startup (a regular file, not a symlink) and a new file is created owner-only (0600).
+- **Tool metadata:** `tools[].title` and `tools[].annotations` (`read_only`, `destructive`, `idempotent`, `open_world`) are published to clients, which use them for approval prompts and parallel calls. `examples/git-tools.yaml` marks its tools read-only.
+- `forge.version` and `forge.description` are sent as the server's version and instructions (they were ignored).
+- **Antigravity installer** (`--client antigravity`), Google's successor to Gemini CLI for consumer plans.
+
+### Changed
+- Requires `fastmcp>=4.1,<5` (OAuth providers need 4.1).
+- Tool failures (non-zero exit, timeout, missing binary, rejected arguments, unparseable or oversized `json_field` output) are returned with `isError: true`, so clients can tell a failed call from a result. The text is unchanged and nothing extra is logged.
+- **Windsurf is now Devin Desktop:** `--client devin` writes `~/.config/devin/mcp_config.json` (`%APPDATA%\devin` on Windows) and `.devin/mcp_config.json`; `--client windsurf` still works as an alias.
+- Roo Code (shut down 2026-05) and Continue.dev (no longer maintained) installers are kept for existing installs but not developed further.
+
+### Fixed
+- **Claude Code:** `--project` writes `.mcp.json` at the project root (Claude Code never read servers from `.claude/settings.json`), and HTTP entries carry `"type": "http"` (without it Claude Code treats the entry as stdio).
+- **Remote installs with an API key** use each client's own env-variable syntax: `${env:VAR}` for Cursor, VS Code, Cline, Devin and Roo Code; `${VAR}` for Claude Code, Kiro and CodeBuddy. Gemini CLI gets the variable added to `security.environmentVariableRedaction.allowed`, because it strips variables named like `*KEY*` before expanding headers. Continue, Augment, Trae and Antigravity cannot expand variables in headers, so the key is resolved at install time.
+- **Cline** reads `~/.cline/data/settings/cline_mcp_settings.json` (shared by its VS Code, CLI and JetBrains clients; `CLINE_DIR`, `CLINE_DATA_DIR` and `CLINE_MCP_SETTINGS_PATH` are honoured) and needs `"type": "streamableHttp"` for remote servers.
+- **Trae** reads `<AppData>/Trae/User/mcp.json`, not `~/.trae/mcp.json`; **Continue** reads `~/.continue/mcpServers/`, not `~/.continue/mcp.json`; **Roo Code** reads `mcp_settings.json`.
+- **Augment** supports project scope (`.augment/settings.json`).
+- Claude Code detection no longer always reports the client as installed.
+- README CI recipe used a `claude --mcp` flag that does not exist; it now uses `--mcp-config`.
+
+---
+
 ## [0.4.0] — 2026-10-13
 
 ### Security

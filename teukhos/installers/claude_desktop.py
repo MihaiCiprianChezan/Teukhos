@@ -2,33 +2,18 @@
 
 from __future__ import annotations
 
-import os
-import platform
 from pathlib import Path
 
-from teukhos.installers.base import InstallScope, JsonMcpInstaller
+from teukhos.installers.base import InstallScope, JsonMcpInstaller, app_data_dir
 
 
 class ClaudeDesktopInstaller(JsonMcpInstaller):
     name = "Claude Desktop"
     slug = "claude-desktop"
     supported_scopes = [InstallScope.global_]
-    supports_env_substitution = False
 
-    def config_path(self, scope: InstallScope) -> Path:
-        if self._config_path_override and scope in self._config_path_override:
-            return self._config_path_override[scope]
-        system = platform.system()
-        if system == "Darwin":
-            return (
-                Path.home() / "Library" / "Application Support"
-                / "Claude" / "claude_desktop_config.json"
-            )
-        elif system == "Windows":
-            appdata = os.environ.get("APPDATA") or Path.home() / "AppData" / "Roaming"
-            return Path(appdata) / "Claude" / "claude_desktop_config.json"
-        config_home = os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config"
-        return Path(config_home) / "Claude" / "claude_desktop_config.json"
+    def default_path(self, scope: InstallScope) -> Path:
+        return app_data_dir() / "Claude" / "claude_desktop_config.json"
 
     def install_http(self, server_name: str, url: str, api_key: str | None,
                      scope: InstallScope = InstallScope.global_) -> None:

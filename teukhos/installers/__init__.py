@@ -9,7 +9,7 @@ from teukhos.installers.cursor import CursorInstaller
 from teukhos.installers.github_copilot import GitHubCopilotInstaller
 from teukhos.installers.gemini_cli import GeminiCLIInstaller
 from teukhos.installers.codex import CodexInstaller
-from teukhos.installers.windsurf import WindsurfInstaller
+from teukhos.installers.devin import DevinInstaller
 from teukhos.installers.cline import ClineInstaller
 from teukhos.installers.roo_code import RooCodeInstaller
 from teukhos.installers.continue_dev import ContinueDevInstaller
@@ -18,6 +18,8 @@ from teukhos.installers.auggie import AuggieInstaller
 from teukhos.installers.codebuddy import CodeBuddyInstaller
 from teukhos.installers.opencode import OpenCodeInstaller
 from teukhos.installers.trae import TraeInstaller
+from teukhos.installers.antigravity import AntigravityInstaller
+from teukhos.installers.lm_studio import LMStudioInstaller
 
 ALL_INSTALLERS: list[type[BaseInstaller]] = [
     ClaudeDesktopInstaller,
@@ -26,7 +28,7 @@ ALL_INSTALLERS: list[type[BaseInstaller]] = [
     GitHubCopilotInstaller,
     GeminiCLIInstaller,
     CodexInstaller,
-    WindsurfInstaller,
+    DevinInstaller,
     ClineInstaller,
     RooCodeInstaller,
     ContinueDevInstaller,
@@ -35,7 +37,12 @@ ALL_INSTALLERS: list[type[BaseInstaller]] = [
     CodeBuddyInstaller,
     OpenCodeInstaller,
     TraeInstaller,
+    AntigravityInstaller,
+    LMStudioInstaller,
 ]
+
+# Old slugs of renamed clients
+ALIASES = {"windsurf": "devin"}
 
 __all__ = [
     "ALL_INSTALLERS",
@@ -46,6 +53,7 @@ __all__ = [
 
 def get_installer(slug: str) -> BaseInstaller | None:
     """Get an installer instance by slug."""
+    slug = ALIASES.get(slug, slug)
     for cls in ALL_INSTALLERS:
         if cls.slug == slug:
             return cls()

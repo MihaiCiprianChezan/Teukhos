@@ -45,6 +45,7 @@ def test_api_key_unresolved_still_serves_stdio(tmp_path, run_calls, monkeypatch)
     result = _serve(tmp_path, "auth:\n  mode: api_key\n  api_keys: ['env:TEUKHOS_TEST_UNSET_KEY']\n")
     assert result.exit_code == 0
     assert run_calls == [{"transport": "stdio"}]
+    assert "0 of 1 key(s) resolved" in result.output
 
 
 def test_http_middleware_order(tmp_path, run_calls, monkeypatch):
@@ -55,6 +56,7 @@ def test_http_middleware_order(tmp_path, run_calls, monkeypatch):
     ))
     assert result.exit_code == 0, result.output
     assert _middleware(run_calls) == [OriginMiddleware, CORSMiddleware, AuthMiddleware]
+    assert "1 of 1 key(s) resolved" in result.output
 
 
 def test_http_without_auth_or_cors_still_checks_origin(tmp_path, run_calls):

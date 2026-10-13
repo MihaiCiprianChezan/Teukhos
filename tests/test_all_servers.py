@@ -135,54 +135,55 @@ class TestStdioServers:
 # HTTP tests — spawn real HTTP servers and test via httpx
 # ---------------------------------------------------------------------------
 
+@pytest.fixture(scope="class")
+def http_servers():
+    """Start all HTTP servers, yield, then stop them."""
+    processes: list[tuple[str, int, subprocess.Popen]] = []
+
+    for name, port in HTTP_SERVERS:
+        yaml_path = EXAMPLES_DIR / f"{name}.yaml"
+        if not yaml_path.exists():
+            continue
+        # DEVNULL, not PIPE: nothing reads these, and a server whose startup output
+        # fills the pipe buffer (~4 KB on Windows) blocks before it starts listening
+        proc = subprocess.Popen(
+            [sys.executable, "-m", "teukhos.cli", "serve", str(yaml_path), "-t", "http", "-p", str(port)],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            cwd=str(Path(__file__).parent.parent),
+        )
+        processes.append((name, port, proc))
+
+    # Wait for ALL servers to be ready — CI runners can be slow
+    import httpx as _httpx
+    deadline = time.time() + 30
+    pending_ports = {port for _, port, _ in processes}
+    while pending_ports and time.time() < deadline:
+        time.sleep(0.5)
+        for port in list(pending_ports):
+            try:
+                _httpx.get(f"http://127.0.0.1:{port}/mcp", timeout=2)
+                pending_ports.discard(port)
+            except Exception:
+                pass
+
+    yield processes
+
+    # Cleanup
+    for name, port, proc in processes:
+        proc.terminate()
+        try:
+            proc.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+
+
 @pytest.mark.skipif(
     "CI" in os.environ,
     reason="HTTP subprocess tests are for local use — stdio tests cover the same MCP logic in CI",
 )
 class TestHTTPServers:
     """Spawn HTTP servers as subprocesses and test via real HTTP requests."""
-
-    @pytest.fixture(scope="class")
-    def http_servers(self):
-        """Start all HTTP servers, yield, then stop them."""
-        processes: list[tuple[str, int, subprocess.Popen]] = []
-
-        for name, port in HTTP_SERVERS:
-            yaml_path = EXAMPLES_DIR / f"{name}.yaml"
-            if not yaml_path.exists():
-                continue
-            # DEVNULL, not PIPE: nothing reads these, and a server whose startup output
-            # fills the pipe buffer (~4 KB on Windows) blocks before it starts listening
-            proc = subprocess.Popen(
-                [sys.executable, "-m", "teukhos.cli", "serve", str(yaml_path), "-t", "http", "-p", str(port)],
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                cwd=str(Path(__file__).parent.parent),
-            )
-            processes.append((name, port, proc))
-
-        # Wait for ALL servers to be ready — CI runners can be slow
-        import httpx as _httpx
-        deadline = time.time() + 30
-        pending_ports = {port for _, port, _ in processes}
-        while pending_ports and time.time() < deadline:
-            time.sleep(0.5)
-            for port in list(pending_ports):
-                try:
-                    _httpx.get(f"http://127.0.0.1:{port}/mcp", timeout=2)
-                    pending_ports.discard(port)
-                except Exception:
-                    pass
-
-        yield processes
-
-        # Cleanup
-        for name, port, proc in processes:
-            proc.terminate()
-            try:
-                proc.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                proc.kill()
 
     def test_http_servers_started(self, http_servers):
         """Verify all HTTP server processes are running."""

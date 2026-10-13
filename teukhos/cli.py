@@ -148,7 +148,7 @@ def serve(
         )
         raise typer.Exit(1)
 
-    _print_banner(forge_config)
+    _print_banner(forge_config, len(bundle.resolved_auth_keys))
 
     if is_http:
         from starlette.middleware import Middleware
@@ -627,7 +627,7 @@ def discover(
     console.print(f"[dim]{len(result.tools)} tool(s) discovered.[/]")
 
 
-def _print_banner(config: object) -> None:
+def _print_banner(config: object, resolved_keys: int = 0) -> None:
     """Print a startup banner with server info."""
     from teukhos.config import ForgeConfig
 
@@ -648,8 +648,8 @@ def _print_banner(config: object) -> None:
     # Auth info
     auth_mode = config.auth.mode.value
     if auth_mode == "api_key":
-        key_count = len(config.auth.api_keys)
-        banner.add_row("[bold]Auth:[/]", f"api_key ({key_count} key(s) configured)")
+        configured = len(config.auth.api_keys)
+        banner.add_row("[bold]Auth:[/]", f"api_key ({resolved_keys} of {configured} key(s) resolved)")
     else:
         banner.add_row("[bold]Auth:[/]", auth_mode)
 

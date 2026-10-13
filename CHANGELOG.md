@@ -5,6 +5,46 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [Unreleased]
+
+### Security
+- **API-key auth bypass via the `Host` header.** A request with e.g. `Host: a?` reached `/mcp` without a key, because the middleware matched `request.url.path`, which Starlette rebuilds from `Host`. Auth now matches the routed path and denies by default; only `/health` is public.
+- **Auth failed open.** `auth.mode: api_key` with no resolvable key (env var unset) served without authentication. `serve` over HTTP now refuses to start.
+- **Argument injection.** LLM-supplied positional and flag-less values starting with `-` are rejected (e.g. `--output=...` into git), including Unicode look-alikes that Windows converts to `-`. Enum values and configured defaults are exempt.
+- **`enum` is enforced** and published in the tool schema; it was documented but ignored. Values (and the default) are coerced to the arg type; an enum on a boolean arg, YAML booleans or non-integer numbers in an integer enum, and a default outside the enum are config errors.
+- **`secret` works.** A secret arg with a default is hidden from the tool schema and a string default is redacted from tool output (before truncation, so a cut can't expose part of it). Previously the flag did nothing and defaults were published in `tools/list`.
+- **Origin check.** Browser requests whose `Origin` isn't in `cors_origins` get 403 (DNS rebinding, websites calling a local server).
+- **Windows:** `.cmd`/`.bat` commands reject arguments containing `cmd.exe` metacharacters or argument separators (command and argument injection); bare command names are no longer resolved from the server's current directory (binary planting), and tool processes inherit that setting; MSYS/Cygwin tools get `noglob`.
+- **Codex installer:** `forge.name` could inject extra `[mcp_servers.*]` tables into `~/.codex/config.toml`; keys are now quoted and values escaped.
+- `examples/database-tools.yaml`: `sqlite_query` runs with `-safe -readonly`, `sqlite_tables`/`sqlite_schema` pin their `query` arg with `enum` (it accepted `.shell`), and `pg_query` is removed (psql runs backslash meta-commands from `-c` and has no safe mode).
+- `serve` warns for any non-loopback bind without auth (was `0.0.0.0` only) and for `cors_origins: ["*"]` without auth.
+
+### Added
+- `cli.max_output_bytes` (default 1 MB): stdout/stderr beyond it are truncated with a marker. Output is captured in temp files, so memory stays bounded. A `json_field` tool whose JSON exceeds the limit returns an error that says to raise it.
+- The `/health` endpoint is registered. It was advertised but returned 404, so `wait-ready` and the Docker `HEALTHCHECK` always timed out.
+
+### Fixed
+- Codex installer wrote invalid TOML on Windows (unescaped backslashes), and reinstall/uninstall left `args = [...]` lines behind that corrupted other entries. Sections are now removed up to the next header (comments introducing the next table are kept), the result is checked with `tomllib` before an atomic write, and a config broken by an older version is repaired on reinstall. Stray `args = [...]` lines that an older version left inside another server's table must be removed by hand.
+- Codex HTTP entries use `bearer_token_env_var` / `http_headers`, the keys Codex reads; the old `[headers]` table was ignored, so no auth header was sent.
+- `cli.env` adds to the server's environment as documented instead of replacing it (children lost `PATH`/`SYSTEMROOT`).
+- Windows: `npx`, `npm`, `az` and other `.cmd` shims work as bare command names (they failed with "not found"). The shim is only a fallback when no `.exe` is found, so existing commands resolve as before.
+- Windows: `timeout_seconds` is enforced even when a grandchild process keeps the output open.
+- A missing `working_dir` is reported as such instead of "command not found" (or an uncaught exception); `~` is expanded. Other `OSError`s and rejected arguments return a tool error and are logged with traceback.
+- `output.type: exit_code` reports timeouts and missing binaries instead of "Failed with exit code -1".
+- CORS middleware runs before auth, so browser preflights get through.
+- Config files are read as bytes, so UTF-8 with BOM and UTF-16 (common on Windows) load correctly; a BOM used to silently drop the first section.
+- Rich markup in names, paths or errors (e.g. `tools[/bold]`) no longer crashes `install` or `validate`, or garbles `discover` errors.
+- JSON `uninstall` no longer creates a config file for a client that has none; installs write through a symlink whose target exists (dangling links are replaced); an unresolvable `env:` key for a client without `${VAR}` support is an error instead of writing `Bearer env:VAR`.
+- Tool results are sent once as text instead of also as a duplicate `structuredContent`; `json_field` objects keep non-ASCII text unescaped.
+
+### Changed
+- Unknown config keys are rejected, so typos fail `teukhos validate`.
+- `AuthMiddleware(protected_paths=...)` is replaced by `public_paths` (default `["/health"]`); an empty key list denies all requests.
+- Codex entries no longer include a `type` key (Codex ignores it); `config.toml` is written with mode 0600, existing files included, like the JSON installers.
+- Config files must be UTF-8 (BOM optional) or UTF-16; ANSI/cp1252 files with non-ASCII text must be re-saved as UTF-8.
+
+---
+
 ## [0.3.9] — 2026-03-18
 
 ### Added

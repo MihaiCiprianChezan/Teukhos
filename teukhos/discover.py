@@ -10,6 +10,7 @@ from pathlib import Path, PureWindowsPath
 
 import yaml
 from rich.console import Console
+from rich.markup import escape
 
 console = Console(stderr=True)
 
@@ -57,7 +58,7 @@ def run_help(binary: str, args: list[str] | None = None, timeout: int = 15) -> s
         output = result.stdout or result.stderr
         return output.strip() if output else None
     except (subprocess.TimeoutExpired, FileNotFoundError, OSError) as e:
-        console.print(f"[dim]Failed to run {' '.join(cmd)}: {e}[/]")
+        console.print(f"[dim]Failed to run {escape(' '.join(cmd))}: {escape(str(e))}[/]")
         return None
 
 

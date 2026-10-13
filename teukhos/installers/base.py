@@ -65,8 +65,12 @@ def read_json_config(path: Path) -> dict:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-def atomic_write_json(path: Path, data: dict) -> None:
-    """Write JSON to a file atomically with backup."""
+def atomic_write_text(path: Path, text: str) -> None:
+    """Write text to a file atomically with backup. New files get mode 0600 (mkstemp)."""
+    # Dotfiles setups: update the file a symlink points to instead of replacing the link.
+    # Dangling links are replaced as before, so a planted link can't create files elsewhere.
+    if path.is_symlink() and path.exists():
+        path = path.resolve()
     path.parent.mkdir(parents=True, exist_ok=True)
 
     if path.exists():
@@ -78,12 +82,16 @@ def atomic_write_json(path: Path, data: dict) -> None:
     )
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=2)
-            f.write("\n")
+            f.write(text)
         os.replace(tmp_path, path)
     except BaseException:
         os.unlink(tmp_path)
         raise
+
+
+def atomic_write_json(path: Path, data: dict) -> None:
+    """Write JSON to a file atomically with backup."""
+    atomic_write_text(path, json.dumps(data, indent=2) + "\n")
 
 
 def merge_mcp_entry(config: dict, server_name: str, entry: dict,
@@ -119,26 +127,16 @@ class JsonMcpInstaller(BaseInstaller):
     def detect(self) -> bool:
         return self.config_path(InstallScope.global_).parent.exists()
 
-    def install_stdio(self, server_name: str, teukhos_config_path: Path,
-                      scope: InstallScope = InstallScope.global_) -> None:
-        teukhos_bin = shutil.which("teukhos") or "teukhos"
-        effective = self._effective_scope(scope)
-        path = self.config_path(effective)
-        config = read_json_config(path)
+    def stdio_entry(self, teukhos_bin: str, teukhos_config_path: Path) -> dict:
         entry: dict = {
             "command": teukhos_bin,
             "args": ["serve", str(teukhos_config_path)],
         }
         if self.stdio_needs_type_field:
             entry["type"] = "stdio"
-        merge_mcp_entry(config, server_name, entry, key=self.config_key)
-        atomic_write_json(path, config)
+        return entry
 
-    def install_http(self, server_name: str, url: str, api_key: str | None,
-                     scope: InstallScope = InstallScope.global_) -> None:
-        effective = self._effective_scope(scope)
-        path = self.config_path(effective)
-        config = read_json_config(path)
+    def http_entry(self, url: str, api_key: str | None) -> dict:
         entry: dict = {"url": url}
         if self.stdio_needs_type_field:
             entry["type"] = "http"
@@ -148,20 +146,34 @@ class JsonMcpInstaller(BaseInstaller):
                 entry["headers"] = {"Authorization": f"Bearer ${{{env_var}}}"}
             elif api_key.startswith("env:"):
                 from teukhos.auth import resolve_key
-                try:
-                    resolved = resolve_key(api_key)
-                    entry["headers"] = {"Authorization": f"Bearer {resolved}"}
-                except ValueError:
-                    entry["headers"] = {"Authorization": f"Bearer {api_key}"}
+                # Client can't expand ${VAR}: resolve now, and fail loudly rather than write "Bearer env:VAR"
+                entry["headers"] = {"Authorization": f"Bearer {resolve_key(api_key)}"}
             else:
                 entry["headers"] = {"Authorization": f"Bearer {api_key}"}
-        merge_mcp_entry(config, server_name, entry, key=self.config_key)
+        return entry
+
+    def install_stdio(self, server_name: str, teukhos_config_path: Path,
+                      scope: InstallScope = InstallScope.global_) -> None:
+        teukhos_bin = shutil.which("teukhos") or "teukhos"
+        path = self.config_path(self._effective_scope(scope))
+        config = read_json_config(path)
+        merge_mcp_entry(config, server_name, self.stdio_entry(teukhos_bin, teukhos_config_path),
+                        key=self.config_key)
+        atomic_write_json(path, config)
+
+    def install_http(self, server_name: str, url: str, api_key: str | None,
+                     scope: InstallScope = InstallScope.global_) -> None:
+        path = self.config_path(self._effective_scope(scope))
+        config = read_json_config(path)
+        merge_mcp_entry(config, server_name, self.http_entry(url, api_key), key=self.config_key)
         atomic_write_json(path, config)
 
     def uninstall(self, server_name: str,
                   scope: InstallScope = InstallScope.global_) -> None:
         effective = self._effective_scope(scope)
         path = self.config_path(effective)
+        if not path.exists():
+            return  # don't create a config (and make the client look installed) just to remove from it
         config = read_json_config(path)
         remove_mcp_entry(config, server_name, key=self.config_key)
         atomic_write_json(path, config)

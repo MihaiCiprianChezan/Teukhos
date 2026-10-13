@@ -20,11 +20,13 @@ tools:
       type: stdout
 
   - name: sqlite_query
-    description: "Run a SQL query against a SQLite database file"
+    description: "Run a read-only SQL query against a SQLite database file"
     adapter: cli
     cli:
       command: sqlite3
-      subcommand: ["-header", "-column"]
+      # -safe blocks dot-commands like .shell/.system (sqlite3 >= 3.37); -readonly stops the
+      # query from creating or writing files at the agent-chosen database path
+      subcommand: ["-safe", "-readonly", "-header", "-column"]
       timeout_seconds: 30
     args:
       - name: database
@@ -58,6 +60,7 @@ tools:
         required: false
         positional: true
         default: ".tables"
+        enum: [".tables"]   # fixed: any other dot-command (e.g. .shell) would run OS commands
     output:
       type: stdout
 
@@ -79,30 +82,12 @@ tools:
         required: false
         positional: true
         default: ".schema"
+        enum: [".schema"]   # fixed: any other dot-command (e.g. .shell) would run OS commands
     output:
       type: stdout
 
-  - name: pg_query
-    description: "Run a SQL query against a PostgreSQL database"
-    adapter: cli
-    cli:
-      command: psql
-      subcommand: ["--no-psqlrc", "--pset=footer=off"]
-      timeout_seconds: 30
-    args:
-      - name: connection
-        type: string
-        description: "Connection string (e.g. 'postgresql://user:pass@localhost/mydb')"
-        required: true
-        flag: "-d"
-      - name: query
-        type: string
-        description: "SQL query to execute"
-        required: true
-        flag: "-c"
-    output:
-      type: stdout
-
+  # No free-form pg_query tool: psql runs backslash meta-commands passed to -c
+  # (including shell escapes) and has no safe mode, so only fixed queries are exposed.
   - name: pg_tables
     description: "List all tables in a PostgreSQL database"
     adapter: cli

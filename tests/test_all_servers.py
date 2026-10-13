@@ -7,6 +7,7 @@ Catches concurrency issues, transport bugs, and server startup failures.
 from __future__ import annotations
 
 import asyncio
+import inspect
 import os
 import subprocess
 import sys
@@ -22,6 +23,10 @@ from teukhos.engine import build_server
 
 EXAMPLES_DIR = Path(__file__).parent.parent / "examples"
 TEUKHOS_BIN = sys.executable  # We'll invoke via python -m
+
+# MCP 2026-07-28 removed ping, and fastmcp 4.x negotiates that revision by default.
+# Ping over the initialize handshake that current clients use (fastmcp 3.x has only that one).
+HANDSHAKE = {"mode": "legacy"} if "mode" in inspect.signature(Client).parameters else {}
 
 # Port assignments matching .vscode/mcp.json
 HTTP_SERVERS = [
@@ -53,7 +58,7 @@ class TestStdioServers:
         """Ping each server through stdio MCP protocol."""
         config = load_config(yaml_file)
         bundle = build_server(config)
-        async with Client(bundle.mcp) as client:
+        async with Client(bundle.mcp, **HANDSHAKE) as client:
             # MCP-level ping (protocol handshake)
             assert await client.ping() is True
 
@@ -135,52 +140,55 @@ class TestStdioServers:
 # HTTP tests — spawn real HTTP servers and test via httpx
 # ---------------------------------------------------------------------------
 
+@pytest.fixture(scope="class")
+def http_servers():
+    """Start all HTTP servers, yield, then stop them."""
+    processes: list[tuple[str, int, subprocess.Popen]] = []
+
+    for name, port in HTTP_SERVERS:
+        yaml_path = EXAMPLES_DIR / f"{name}.yaml"
+        if not yaml_path.exists():
+            continue
+        # DEVNULL, not PIPE: nothing reads these, and a server whose startup output
+        # fills the pipe buffer (~4 KB on Windows) blocks before it starts listening
+        proc = subprocess.Popen(
+            [sys.executable, "-m", "teukhos.cli", "serve", str(yaml_path), "-t", "http", "-p", str(port)],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            cwd=str(Path(__file__).parent.parent),
+        )
+        processes.append((name, port, proc))
+
+    # Wait for ALL servers to be ready — CI runners can be slow
+    import httpx as _httpx
+    deadline = time.time() + 30
+    pending_ports = {port for _, port, _ in processes}
+    while pending_ports and time.time() < deadline:
+        time.sleep(0.5)
+        for port in list(pending_ports):
+            try:
+                _httpx.get(f"http://127.0.0.1:{port}/mcp", timeout=2)
+                pending_ports.discard(port)
+            except Exception:
+                pass
+
+    yield processes
+
+    # Cleanup
+    for name, port, proc in processes:
+        proc.terminate()
+        try:
+            proc.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+
+
 @pytest.mark.skipif(
     "CI" in os.environ,
     reason="HTTP subprocess tests are for local use — stdio tests cover the same MCP logic in CI",
 )
 class TestHTTPServers:
     """Spawn HTTP servers as subprocesses and test via real HTTP requests."""
-
-    @pytest.fixture(scope="class")
-    def http_servers(self):
-        """Start all HTTP servers, yield, then stop them."""
-        processes: list[tuple[str, int, subprocess.Popen]] = []
-
-        for name, port in HTTP_SERVERS:
-            yaml_path = EXAMPLES_DIR / f"{name}.yaml"
-            if not yaml_path.exists():
-                continue
-            proc = subprocess.Popen(
-                [sys.executable, "-m", "teukhos.cli", "serve", str(yaml_path), "-t", "http", "-p", str(port)],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                cwd=str(Path(__file__).parent.parent),
-            )
-            processes.append((name, port, proc))
-
-        # Wait for ALL servers to be ready — CI runners can be slow
-        import httpx as _httpx
-        deadline = time.time() + 30
-        pending_ports = {port for _, port, _ in processes}
-        while pending_ports and time.time() < deadline:
-            time.sleep(0.5)
-            for port in list(pending_ports):
-                try:
-                    _httpx.get(f"http://127.0.0.1:{port}/mcp", timeout=2)
-                    pending_ports.discard(port)
-                except Exception:
-                    pass
-
-        yield processes
-
-        # Cleanup
-        for name, port, proc in processes:
-            proc.terminate()
-            try:
-                proc.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                proc.kill()
 
     def test_http_servers_started(self, http_servers):
         """Verify all HTTP server processes are running."""
@@ -224,7 +232,7 @@ class TestHTTPServers:
                 continue
             try:
                 url = f"http://127.0.0.1:{port}/mcp"
-                async with Client(url) as client:
+                async with Client(url, **HANDSHAKE) as client:
                     # MCP protocol ping
                     mcp_ping = await client.ping()
                     # Our custom ping tool

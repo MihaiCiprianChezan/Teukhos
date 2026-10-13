@@ -93,3 +93,63 @@ tools:
     assert tool.args[0].positional is True
     assert tool.args[1].type.value == "boolean"
     assert tool.args[1].flag == "--verbose"
+
+
+from pydantic import ValidationError
+
+from teukhos.config import ArgConfig, CLIAdapterConfig, ForgeConfig
+
+
+def test_unknown_key_rejected():
+    """Typos must fail validation instead of being silently ignored."""
+    with pytest.raises(ValidationError, match="working_directory"):
+        ForgeConfig.model_validate(
+            {"tools": [{"name": "t", "cli": {"command": "x", "working_directory": "/tmp"}}]}
+        )
+    with pytest.raises(ValidationError, match="secert"):
+        ArgConfig.model_validate({"name": "token", "secert": True})
+
+
+def test_enum_values_coerced_to_arg_type():
+    assert ArgConfig(name="n", type="integer", enum=["1", 2]).enum == [1, 2]
+    assert ArgConfig(name="s", enum=[1, "a"]).enum == ["1", "a"]
+
+
+@pytest.mark.parametrize("bad", [
+    {"name": "b", "type": "boolean", "enum": ["x"]},
+    {"name": "i", "type": "integer", "enum": ["abc"]},
+    {"name": "d", "enum": ["a", "b"], "default": "z"},
+])
+def test_invalid_enum_rejected(bad):
+    with pytest.raises(ValidationError, match=f"arg '{bad['name']}'"):
+        ArgConfig.model_validate(bad)
+
+
+def test_max_output_bytes_must_be_positive():
+    with pytest.raises(ValidationError):
+        CLIAdapterConfig(command="x", max_output_bytes=0)
+
+
+@pytest.mark.parametrize("encoding", ["utf-8", "utf-8-sig", "utf-16"])
+def test_load_config_detects_encoding(tmp_path, encoding):
+    """Windows editors write BOMs/UTF-16; the locale codec (cp1252) must not be used."""
+    path = tmp_path / "teukhos.yaml"
+    path.write_text('forge:\n  name: enc\n  description: "— Ё"\ntools: []\n', encoding=encoding)
+    config = load_config(path)
+    assert config.forge.name == "enc"
+    assert config.forge.description == "— Ё"
+
+
+@pytest.mark.parametrize("bad", [
+    {"name": "color", "flag": "--color", "enum": [True, False]},   # YAML on/off
+    {"name": "level", "type": "integer", "enum": [1.5, 2]},
+])
+def test_enum_values_not_silently_changed(bad):
+    with pytest.raises(ValidationError):
+        ArgConfig.model_validate(bad)
+
+
+def test_enum_default_coerced_like_values():
+    arg = ArgConfig(name="n", type="integer", enum=["1", "2"], default="1")
+    assert arg.enum == [1, 2]
+    assert arg.default == 1

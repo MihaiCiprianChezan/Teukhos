@@ -48,7 +48,7 @@ class OutputMapper:
             else:
                 return f"Error: field '{self.config.field}' not found in JSON output"
         if isinstance(current, (dict, list)):
-            return json.dumps(current, indent=2)
+            return json.dumps(current, indent=2, ensure_ascii=False)
         return str(current)
 
     def _map_exit_code(self, exit_code: int) -> str:

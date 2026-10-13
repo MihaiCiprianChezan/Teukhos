@@ -113,7 +113,7 @@ teukhos discover <binary>         Auto-generate config from --help
 --all           Install for all detected clients
 --project       Use project-level config (e.g., .cursor/mcp.json in cwd)
 --url           Remote server URL — enables HTTP mode
---key           API key for HTTP mode (default: "env:TEUKHOS_API_KEY")
+--key           API key for HTTP mode (default: "env:TEUKHOS_API_KEY"; --key "" for a server without auth)
 --dest          Write to an arbitrary JSON config file (bypasses client detection)
 --config-key    JSON key for server entries: "mcpServers" (default) or "servers"
 ```
@@ -145,7 +145,7 @@ Teukhos can register with these MCP-compatible AI clients:
 
 | Client | Slug | Project Scope | Config Format |
 |--------|------|:------------:|:------------:|
-| Claude Desktop | `claude-desktop` | — | JSON |
+| Claude Desktop | `claude-desktop` | — | JSON (stdio only; no `--url`) |
 | Claude Code | `claude-code` | Yes | JSON |
 | Cursor | `cursor` | Yes | JSON |
 | GitHub Copilot / VS Code | `github-copilot` | Yes | JSON |
@@ -158,13 +158,15 @@ Teukhos can register with these MCP-compatible AI clients:
 | Kiro | `kiro` | Yes | JSON |
 | Augment Code | `augment` | — | JSON |
 | CodeBuddy | `codebuddy` | Yes | JSON |
-| OpenCode | `opencode` | Yes | JSON |
+| OpenCode | `opencode` | Yes | JSON (`mcp` key) |
 | Trae | `trae` | Yes | JSON |
 
 ```bash
 teukhos clients              # see which are detected on your system
 teukhos install --all         # register with all detected clients
 ```
+
+Claude Desktop's config file only accepts local (stdio) servers, so `install --url` refuses it; a public HTTPS server can be added in Claude Desktop under Customize > Connectors. OpenCode entries use its own format (`"mcp"`, `type: local/remote`, `{env:VAR}` in headers).
 
 ---
 
@@ -265,7 +267,7 @@ server:
   transport: stdio             # stdio | http
   host: "127.0.0.1"           # use 0.0.0.0 for remote (add auth!)
   port: 8765
-  cors_origins: ["*"]         # CORS origins for HTTP (default: none)
+  cors_origins: ["http://localhost:6274"]  # browser origins allowed over HTTP (default: none); "*" only with auth
 
 auth:
   mode: none                   # none | api_key
@@ -283,8 +285,9 @@ tools:
       command: "mybinary"      # must be on PATH or absolute path
       subcommand: []           # e.g. ["log", "--oneline"] for git
       timeout_seconds: 30
-      working_dir: null        # defaults to cwd
-      env: {}                  # extra env vars for this tool
+      working_dir: null        # defaults to the server's cwd (chosen by the MCP client); ~ is expanded
+      env: {}                  # extra env vars, added to the server's environment
+      max_output_bytes: 1000000  # stdout/stderr beyond this are truncated (default 1 MB)
 
     args:
       - name: arg_name
@@ -294,8 +297,8 @@ tools:
         flag: "--flag"         # CLI flag: -f or --flag
         positional: false      # true = append at end of command
         default: null
-        enum: []               # restrict to allowed values
-        secret: false          # redact from logs
+        enum: []               # allowed values: shown to the LLM and enforced
+        secret: false          # with a default: hidden from the LLM and redacted from output
 
     output:
       type: stdout             # stdout | stderr | json_field | exit_code
@@ -304,6 +307,22 @@ tools:
         0: "Success"
         1: "Not found"
 ```
+
+Unknown keys are rejected, so a typo like `secert: true` fails `teukhos validate` instead of being silently ignored.
+
+### Security Model
+
+A `teukhos.yaml` is executable configuration: it decides which binaries run. Read a downloaded config before you `install` or `serve` it. Argument values come from the LLM and are treated as untrusted:
+
+- **No shell.** Commands run as an argument list, so `;`, `|` and `$(...)` are passed literally.
+- **No `-` option injection.** A positional or flag-less value that starts with `-` is rejected, so the LLM can't turn `path` into `--output=/etc/x`. Enum values and the configured default are exempt. Pass dash-prefixed input through a `flag:` instead. Windows tools that take `/X` switches (robocopy, findstr, reg) are not covered; give them `enum` or flag-bound args.
+- **`enum` is enforced.** The allowed values are published in the tool schema and anything else is refused before the command runs. Quote YAML words like `"on"`/`"yes"`, which would otherwise be booleans.
+- **Interpreters need their own safe mode.** A free-form argument to `sqlite3`, `psql`, `python -c` or `node -e` is code. `examples/database-tools.yaml` runs `sqlite3 -safe -readonly` and pins dot-commands with `enum`; `psql` has no safe mode, so only fixed queries are exposed.
+- **`secret` defaults stay with the operator.** A secret arg with a `default` is not offered to the LLM, and a string default is replaced with `[REDACTED]` in tool output. Redaction matches the literal value only, so prefer `cli.env` for real credentials.
+- **Errors are returned as-is.** On a non-zero exit the tool's stderr (or stdout) goes back to the LLM. `json_field`/`stderr`/`exit_code` only shape a successful result; don't rely on them to withhold fields.
+- **Output is capped** at `max_output_bytes` per stream. `json_field` needs the whole JSON, so raise the limit for tools with large JSON output.
+- **Windows batch files.** A bare name like `npx` or `az` that has no `.exe` falls back to its `.cmd`/`.bat` shim. Because `cmd.exe` re-parses batch arguments, values containing `" % ! ^ & | < > ( ) , ; =` or line breaks are rejected for those tools; point `command` at the real `.exe` (e.g. `node` plus the script path) if you need them.
+- **Windows command lookup.** Bare command names are never resolved from the server's current directory. Tool processes inherit this (`NoDefaultCurrentDirectoryInExePath=1`), so a tool's own batch files must call helpers by path (`"%~dp0helper.cmd"`). MSYS/Cygwin tools get `noglob`, so `*` reaches them literally.
 
 ---
 
@@ -452,6 +471,12 @@ Keys in config use the `env:` prefix convention:
 | `"env:MY_CUSTOM_KEY"` | Value of `$MY_CUSTOM_KEY` environment variable |
 | `"my-literal-key"` | Used as-is (not recommended for production) |
 
+With `mode: api_key`, every HTTP path except `/health` needs `Authorization: Bearer <key>`. If none of the configured keys resolves (for example the env var isn't set), `serve` refuses to start instead of running unauthenticated.
+
+### Browser Access (CORS and Origin)
+
+Requests that carry an `Origin` header (i.e. from a browser) are rejected with 403 unless the origin is listed in `server.cors_origins`. This blocks DNS-rebinding and other websites calling a local server; non-browser MCP clients send no `Origin` and are not affected. `"*"` allows every origin and turns that check off, so it needs `api_key` auth: over HTTP with `auth.mode: none`, `serve` refuses to start.
+
 ### Deployment Behind a Reverse Proxy
 
 For production, run behind nginx or Caddy for TLS termination:
@@ -503,11 +528,14 @@ server {
 ```dockerfile
 FROM python:3.12-slim
 RUN pip install teukhos
+# teukhos.yaml needs server.host: "0.0.0.0" to be reachable through -p, and api_key auth
 COPY teukhos.yaml .
 EXPOSE 8765
 HEALTHCHECK CMD teukhos wait-ready --timeout 5
 CMD ["teukhos", "serve", "--transport", "http"]
 ```
+
+Run it with the key set, e.g. `docker run -e TEUKHOS_API_KEY=... -p 8765:8765 my-mcp-server`; without it the server refuses to start.
 
 ### Manual Client Configuration
 
@@ -616,10 +644,7 @@ teukhos install --client cursor --url http://localhost:8766/mcp
 # Start an HTTP server on localhost (for testing)
 teukhos serve git-tools.yaml --transport http
 
-# Start on all interfaces (for network access, requires auth in config)
-teukhos serve remote-server.yaml
-
-# Set the API key and start
+# Start on all interfaces (for network access; set the key first, serve refuses to start without it)
 export TEUKHOS_API_KEY="my-secret-key-abc123"
 teukhos serve remote-server.yaml
 

@@ -1,13 +1,13 @@
 # Remote Teukhos server with HTTP transport and API key auth.
 #
+# Set your API key first (serve refuses to start without it):
+#   export TEUKHOS_API_KEY="your-secret-key-here"
+#
 # Start:
 #   teukhos serve examples/remote-server.yaml
 #
 # Connect from a client:
 #   teukhos install examples/remote-server.yaml --client cursor --url http://HOST:8765/mcp
-#
-# Set your API key:
-#   export TEUKHOS_API_KEY="your-secret-key-here"
 #
 # Key format in config:
 #   "env:TEUKHOS_API_KEY"  — reads from environment variable (recommended)
@@ -22,7 +22,7 @@ server:
   transport: http
   host: "0.0.0.0"         # Bind to all interfaces for network access
   port: 8765
-  cors_origins: ["*"]     # Allow all origins (restrict in production)
+  cors_origins: ["*"]     # Only acceptable because api_key auth is on; list explicit origins in production
 
 auth:
   mode: api_key

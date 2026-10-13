@@ -9,15 +9,28 @@ from dataclasses import dataclass, field
 from typing import Any, Literal
 
 from fastmcp import FastMCP
+from fastmcp.exceptions import NotFoundError
+from fastmcp.server.auth import AuthProvider
+from fastmcp.server.middleware import Middleware
 from fastmcp.tools import ToolResult
 from mcp.types import ToolAnnotations
 from starlette.responses import JSONResponse
 
 from teukhos.adapters.base import AdapterResult
 from teukhos.adapters.cli import CLIAdapter
+from teukhos.access import auth_check
 from teukhos.audit import AuditLog
-from teukhos.auth import current_user, resolve_key
-from teukhos.config import ARG_TYPE_MAP, ArgType, AuthMode, ForgeConfig, OutputConfig, OutputType, ToolConfig
+from teukhos.auth import build_oauth_provider, current_user, resolve_key
+from teukhos.config import (
+    ARG_TYPE_MAP,
+    ArgType,
+    AuthMode,
+    ForgeConfig,
+    OutputConfig,
+    OutputType,
+    ToolConfig,
+    TransportType,
+)
 from teukhos.output import OutputMapper, OutputMappingError
 
 
@@ -29,15 +42,23 @@ class ServerBundle:
     cors_origins: list[str] | None = None
 
 
-def build_server(config: ForgeConfig) -> ServerBundle:
-    """Build a FastMCP server from a ForgeConfig."""
+def build_server(config: ForgeConfig, auth: AuthProvider | None = None) -> ServerBundle:
+    """Build a FastMCP server from a ForgeConfig.
+
+    In OAuth mode over HTTP the identity provider is attached (`auth` overrides it, for tests).
+    """
+    oauth = config.auth.oauth if config.auth.mode == AuthMode.oauth else None
+    if auth is None and oauth and config.server.transport == TransportType.http:
+        auth = build_oauth_provider(oauth, config.server.public_url)
+
+    audit = AuditLog(config.server.audit_log) if config.server.audit_log else None
     mcp = FastMCP(
         config.forge.name,
         version=config.forge.version,
         instructions=config.forge.description or None,
+        auth=auth,
+        middleware=[_AuditRefused(audit)] if audit else None,
     )
-
-    audit = AuditLog(config.server.audit_log) if config.server.audit_log else None
 
     for tool_config in config.tools:
         adapter = _create_adapter(tool_config)
@@ -50,6 +71,7 @@ def build_server(config: ForgeConfig) -> ServerBundle:
             description=tool_config.description,
             annotations=_annotations(tool_config),
             output_schema=None,  # text content only, not a duplicate structuredContent copy
+            auth=auth_check([config.auth.allow, tool_config.allow], oauth.provider) if oauth else None,
         )(handler)
 
     @mcp.custom_route("/health", methods=["GET"])
@@ -71,6 +93,22 @@ def build_server(config: ForgeConfig) -> ServerBundle:
         resolved_auth_keys=resolved_keys,
         cors_origins=config.server.cors_origins,
     )
+
+
+class _AuditRefused(Middleware):
+    """Audit calls that never reach a handler: tools the caller may not use are hidden, so
+    calling one fails as unknown (as does a call to a tool that does not exist)."""
+
+    def __init__(self, audit: AuditLog):
+        self.audit = audit
+
+    async def on_call_tool(self, context, call_next):
+        try:
+            return await call_next(context)
+        except NotFoundError:
+            self.audit.record(user=current_user(), tool=context.message.name, args=None, ok=False,
+                              exit_code=None, error="unknown tool or not allowed", duration_ms=0)
+            raise
 
 
 def _annotations(tool_config: ToolConfig) -> ToolAnnotations | None:

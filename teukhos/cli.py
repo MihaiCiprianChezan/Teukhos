@@ -12,7 +12,7 @@ from rich.panel import Panel
 from rich.table import Table
 
 from teukhos import __version__
-from teukhos.config import AuthMode, TransportType, load_config
+from teukhos.config import LOOPBACK_HOSTS, AuthMode, TransportType, load_config
 
 def _version_callback(value: bool) -> None:
     if value:
@@ -43,8 +43,6 @@ def main(
 # Accept both the new teukhos.yaml and the legacy mcp-forge.yaml names
 DEFAULT_CONFIG = "teukhos.yaml"
 LEGACY_CONFIG = "mcp-forge.yaml"
-
-LOOPBACK_HOSTS = ("127.0.0.1", "localhost", "::1")
 
 
 def _resolve_config(path: Path) -> Path:
@@ -135,7 +133,11 @@ def serve(
 
     from teukhos.engine import build_server
 
-    bundle = build_server(forge_config)
+    try:
+        bundle = build_server(forge_config)
+    except Exception as e:  # e.g. an unset env: value, or the identity provider is unreachable
+        console.print(f"[bold red]Error:[/] {escape(str(e))}")
+        raise typer.Exit(1)
     mcp = bundle.mcp
 
     # Fail closed: api_key auth without a resolvable key must not serve unauthenticated
@@ -154,10 +156,15 @@ def serve(
 
         from teukhos.auth import AuthMiddleware, OriginMiddleware
 
+        allowed_origins = list(bundle.cors_origins or [])
+        if forge_config.auth.mode == AuthMode.oauth:
+            # The login consent form posts from our own origin; Claude and ChatGPT call from theirs
+            allowed_origins += [server.public_url, "https://claude.ai", "https://chatgpt.com"]
+
         # First entry is outermost: reject foreign origins, then answer CORS
-        # preflights, then authenticate.
+        # preflights, then authenticate (OAuth mode: fastmcp guards /mcp itself).
         middleware: list[Middleware] = [
-            Middleware(OriginMiddleware, allowed_origins=bundle.cors_origins)
+            Middleware(OriginMiddleware, allowed_origins=allowed_origins)
         ]
 
         if bundle.cors_origins:
@@ -183,11 +190,14 @@ def serve(
                 Middleware(AuthMiddleware, api_keys=bundle.resolved_auth_keys)
             )
 
+        # JSON instead of SSE responses, for proxies that can't stream (Cloudflare quick tunnels)
+        streaming = {"json_response": True, "stateless_http": True} if server.json_response else {}
         mcp.run(
             transport="streamable-http",
             host=server.host,
             port=server.port,
             middleware=middleware,
+            **streaming,
         )
     else:
         mcp.run(transport="stdio")
@@ -576,6 +586,10 @@ def _print_banner(config: object, resolved_keys: int = 0) -> None:
     if auth_mode == "api_key":
         configured = len(config.auth.api_keys)
         banner.add_row("[bold]Auth:[/]", f"api_key ({resolved_keys} of {configured} key(s) resolved)")
+    elif auth_mode == "oauth":
+        banner.add_row("[bold]Auth:[/]", f"oauth ({config.auth.oauth.provider.value})")
+        banner.add_row("[bold]MCP URL:[/]", escape(f"{config.server.public_url}/mcp"))
+        banner.add_row("[bold]IdP redirect:[/]", escape(f"{config.server.public_url}/auth/callback"))
     else:
         banner.add_row("[bold]Auth:[/]", auth_mode)
 

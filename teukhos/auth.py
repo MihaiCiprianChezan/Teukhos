@@ -4,9 +4,12 @@ from __future__ import annotations
 
 import os
 
+from fastmcp.server.auth import AuthProvider
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse
+
+from teukhos.config import OAuthConfig, OAuthProviderType
 
 
 def claims_user(claims: dict, subject: str | None = None) -> str | None:
@@ -46,6 +49,51 @@ def resolve_key(value: str) -> str:
             raise ValueError(f"Environment variable '{env_var}' is set but empty")
         return key
     return value
+
+
+# Where MCP clients may send users back after login. Without a list any redirect_uri is
+# accepted and the consent screen is the only defence. Loopback covers Claude Code, Codex,
+# LM Studio and the MCP Inspector; add others (e.g. Open WebUI) with auth.oauth.redirect_uris.
+DEFAULT_CLIENT_REDIRECT_URIS = [
+    "https://claude.ai/api/mcp/auth_callback",
+    "https://chatgpt.com/connector_platform_oauth_redirect",
+    "https://chatgpt.com/connector/oauth/*",
+    "http://localhost:*",
+    "http://127.0.0.1:*",
+]
+
+
+def build_oauth_provider(oauth: OAuthConfig, public_url: str) -> AuthProvider:
+    """fastmcp's OAuth proxy for the configured identity provider. Teukhos becomes the OAuth
+    server that ChatGPT/Claude talk to; the provider needs one redirect URI: <public_url>/auth/callback."""
+    common = dict(
+        client_id=resolve_key(oauth.client_id),
+        base_url=public_url,
+        jwt_signing_key=resolve_key(oauth.signing_key),
+        allowed_client_redirect_uris=DEFAULT_CLIENT_REDIRECT_URIS + oauth.redirect_uris,
+        require_authorization_consent=oauth.consent,
+    )
+    secret = resolve_key(oauth.client_secret) if oauth.client_secret else None
+    match oauth.provider:
+        case OAuthProviderType.entra:
+            from fastmcp.server.auth.providers.azure import AzureProvider
+            return AzureProvider(client_secret=secret, tenant_id=oauth.tenant_id, required_scopes=[oauth.scope],
+                                 additional_authorize_scopes=["openid", "profile", "email"], **common)
+        case OAuthProviderType.google:
+            from fastmcp.server.auth.providers.google import GoogleProvider
+            # Google tokens are re-checked against Google per request; cache that for 5 minutes
+            return GoogleProvider(client_secret=secret, required_scopes=["openid", "email", "profile"],
+                                  cache_ttl_seconds=300, **common)
+        case OAuthProviderType.github:
+            from fastmcp.server.auth.providers.github import GitHubProvider
+            return GitHubProvider(client_secret=secret, cache_ttl_seconds=300, **common)
+        case OAuthProviderType.oidc:
+            from fastmcp.server.auth.oidc_proxy import OIDCProxy
+            scopes = ["openid", "email", "profile"]
+            # Fetches the provider's discovery document now, so the IdP must be reachable at startup
+            return OIDCProxy(config_url=oauth.config_url, client_secret=secret, verify_id_token=oauth.verify_id_token,
+                             required_scopes=scopes, valid_scopes=scopes + ["offline_access", *oauth.extra_scopes],
+                             **common)
 
 
 class AuthMiddleware(BaseHTTPMiddleware):

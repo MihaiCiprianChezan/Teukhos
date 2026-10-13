@@ -121,3 +121,40 @@ def test_discover_error_with_markup_in_path():
     assert result.exit_code == 1
     assert "nope/[/x]/no-such-tool" in result.output
     assert "Could not get --help output" in result.output
+
+
+OAUTH = (
+    "server:\n  transport: http\n  public_url: https://tools.acme.com\n"
+    "auth:\n  mode: oauth\n  allow: {domains: [acme.com]}\n"
+    "  oauth: {provider: google, client_id: cid, client_secret: env:TK_SECRET, signing_key: env:TK_KEY}\n"
+)
+
+
+def test_oauth_serve_uses_fastmcp_auth_and_allows_own_origin(tmp_path, monkeypatch):
+    monkeypatch.setenv("FASTMCP_HOME", str(tmp_path / "fastmcp"))
+    monkeypatch.setenv("TK_SECRET", "s")
+    monkeypatch.setenv("TK_KEY", "k" * 32)
+    servers = []
+    monkeypatch.setattr(FastMCP, "run", lambda self, **kwargs: servers.append((self, kwargs)))
+    result = _serve(tmp_path, OAUTH)
+    assert result.exit_code == 0, result.output
+    mcp, kwargs = servers[0]
+    assert mcp.auth is not None
+    assert [m.cls for m in kwargs["middleware"]] == [OriginMiddleware]  # no API-key middleware
+    assert "https://tools.acme.com" in kwargs["middleware"][0].kwargs["allowed_origins"]
+    assert "https://tools.acme.com/mcp" in result.output and "/auth/callback" in result.output
+
+
+def test_oauth_serve_refuses_without_secret(tmp_path, run_calls, monkeypatch):
+    monkeypatch.delenv("TK_SECRET", raising=False)
+    monkeypatch.setenv("TK_KEY", "k" * 32)
+    result = _serve(tmp_path, OAUTH)
+    assert result.exit_code == 1
+    assert "TK_SECRET" in result.output
+    assert run_calls == []
+
+
+def test_json_response_flag(tmp_path, run_calls):
+    result = _serve(tmp_path, "server:\n  transport: http\n  json_response: true\n")
+    assert result.exit_code == 0, result.output
+    assert run_calls[0]["json_response"] is True and run_calls[0]["stateless_http"] is True

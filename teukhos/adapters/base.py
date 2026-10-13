@@ -12,6 +12,8 @@ class AdapterResult:
     stdout: str
     stderr: str
     exit_code: int
+    failed: bool = False      # the adapter itself failed (timeout, not found, rejected args); stderr says why
+    truncated: bool = False   # stdout was cut at max_output_bytes
 
 
 class BaseAdapter(ABC):

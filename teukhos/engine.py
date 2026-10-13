@@ -4,21 +4,14 @@ from __future__ import annotations
 
 import inspect
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Literal
 
 from fastmcp import FastMCP
+from starlette.responses import JSONResponse
 
 from teukhos.adapters.cli import CLIAdapter
-from teukhos.config import ArgConfig, ArgType, AuthMode, ForgeConfig, OutputConfig, ToolConfig
+from teukhos.config import ARG_TYPE_MAP, ArgType, AuthMode, ForgeConfig, OutputConfig, OutputType, ToolConfig
 from teukhos.output import OutputMapper
-
-# Map YAML arg types to Python types
-ARG_TYPE_MAP: dict[ArgType, type] = {
-    ArgType.string: str,
-    ArgType.integer: int,
-    ArgType.number: float,
-    ArgType.boolean: bool,
-}
 
 
 @dataclass
@@ -38,7 +31,12 @@ def build_server(config: ForgeConfig) -> ServerBundle:
         if adapter is None:
             continue
         handler = _build_handler(tool_config, adapter, tool_config.output)
-        mcp.tool(name=tool_config.name, description=tool_config.description)(handler)
+        # output_schema=None: return text content only, not a duplicate structuredContent copy
+        mcp.tool(name=tool_config.name, description=tool_config.description, output_schema=None)(handler)
+
+    @mcp.custom_route("/health", methods=["GET"])
+    async def _health(request: Any) -> JSONResponse:
+        return JSONResponse({"status": "ok"})
 
     # Resolve auth keys (best-effort: missing env vars produce warnings, not crashes)
     resolved_keys: list[str] = []
@@ -84,10 +82,12 @@ def _build_handler(
     args = tool_config.args
 
     params: list[inspect.Parameter] = []
-    annotations: dict[str, type] = {}
+    annotations: dict[str, Any] = {}
 
     for arg in args:
-        py_type = ARG_TYPE_MAP.get(arg.type, str)
+        if arg.secret and arg.default is not None:
+            continue  # operator-held: not exposed; the adapter injects and redacts it
+        py_type = Literal[tuple(arg.enum)] if arg.enum else ARG_TYPE_MAP.get(arg.type, str)
         default = arg.default if arg.default is not None else (
             inspect.Parameter.empty if arg.required else None
         )
@@ -108,12 +108,18 @@ def _build_handler(
 
     async def _handler(**kwargs: Any) -> str:
         result = await adapter.execute(**kwargs)
-        if result.exit_code != 0 and output_config.type.value not in ("exit_code",):
+        if result.failed:  # timeout, not found, rejected args
+            return result.stderr
+        if result.exit_code != 0 and output_config.type != OutputType.exit_code:
             error_msg = result.stderr.strip() or result.stdout.strip()
-            if result.exit_code == -1:
-                return error_msg
             return f"Error (exit code {result.exit_code}): {error_msg}"
-        return mapper.map(result.stdout, result.stderr, result.exit_code)
+        if result.truncated and output_config.type == OutputType.json_field:
+            return (
+                f"Error: output exceeds cli.max_output_bytes ({tool_config.cli.max_output_bytes}); "
+                "raise it for this tool to parse the JSON"
+            )
+        # Output was redacted by the adapter; again here because mapping can re-encode values
+        return adapter.redact(mapper.map(result.stdout, result.stderr, result.exit_code))
 
     sig = inspect.Signature(parameters=params, return_annotation=str)
     _handler.__signature__ = sig  # type: ignore[attr-defined]

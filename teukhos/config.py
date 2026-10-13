@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, StrictFloat, StrictInt, StrictStr, model_validator
 
 
 class TransportType(str, Enum):
@@ -34,52 +34,90 @@ class ArgType(str, Enum):
     boolean = "boolean"
 
 
-class ForgeInfo(BaseModel):
+# Map YAML arg types to Python types
+ARG_TYPE_MAP: dict[ArgType, type] = {
+    ArgType.string: str,
+    ArgType.integer: int,
+    ArgType.number: float,
+    ArgType.boolean: bool,
+}
+
+
+class _Model(BaseModel):
+    """Base for all config models: unknown (e.g. misspelled) keys are errors, not silently ignored."""
+    model_config = ConfigDict(extra="forbid")
+
+
+class ForgeInfo(_Model):
     name: str = "teukhos-server"
     version: str = "0.1.0"
     description: str = ""
 
 
-class ServerConfig(BaseModel):
+class ServerConfig(_Model):
     transport: TransportType = TransportType.stdio
     host: str = "127.0.0.1"
     port: int = 8765
     cors_origins: list[str] | None = None
 
 
-class AuthConfig(BaseModel):
+class AuthConfig(_Model):
     mode: AuthMode = AuthMode.none
     api_keys: list[str] = Field(default_factory=list)
 
 
-class ArgConfig(BaseModel):
+class ArgConfig(_Model):
     name: str
     type: ArgType = ArgType.string
     description: str = ""
     required: bool = False
     flag: str | None = None
     default: Any = None
-    enum: list[str] | None = None
+    # Strict members: YAML 1.1 booleans (on/off/yes/no) are an error, not silently 1/0
+    enum: list[StrictStr | StrictInt | StrictFloat] | None = None
     positional: bool = False
     secret: bool = False
 
+    @model_validator(mode="after")
+    def _check_enum(self) -> ArgConfig:
+        """Coerce enum values (and the default) to the arg type so they can be enforced as a Literal."""
+        if not self.enum:
+            return self
+        if self.type == ArgType.boolean:
+            raise ValueError(f"arg '{self.name}': enum is not supported for boolean args")
+        convert = ARG_TYPE_MAP[self.type]
+        try:
+            if self.type == ArgType.integer and any(float(v) != int(float(v)) for v in self.enum):
+                raise ValueError
+            self.enum = [convert(float(v)) if self.type == ArgType.integer else convert(v) for v in self.enum]
+            if self.default is not None:
+                self.default = convert(self.default)
+        except (ValueError, OverflowError):
+            raise ValueError(
+                f"arg '{self.name}': enum values and default must be valid {self.type.value} values"
+            ) from None
+        if self.default is not None and self.default not in self.enum:
+            raise ValueError(f"arg '{self.name}': default {self.default!r} is not one of {self.enum}")
+        return self
 
-class OutputConfig(BaseModel):
+
+class OutputConfig(_Model):
     type: OutputType = OutputType.stdout
     field: str | None = None
     jq: str | None = None
     exit_codes: dict[int, str] | None = None
 
 
-class CLIAdapterConfig(BaseModel):
+class CLIAdapterConfig(_Model):
     command: str
     subcommand: list[str] = Field(default_factory=list)
     timeout_seconds: int = 30
     working_dir: str | None = None
     env: dict[str, str] = Field(default_factory=dict)
+    max_output_bytes: int = Field(default=1_000_000, gt=0)
 
 
-class ShellAdapterConfig(BaseModel):
+class ShellAdapterConfig(_Model):
     script: str
     shell: str = "bash"
     timeout_seconds: int = 30
@@ -87,7 +125,7 @@ class ShellAdapterConfig(BaseModel):
     env: dict[str, str] = Field(default_factory=dict)
 
 
-class ToolConfig(BaseModel):
+class ToolConfig(_Model):
     name: str
     description: str = ""
     adapter: str = "cli"
@@ -97,7 +135,7 @@ class ToolConfig(BaseModel):
     output: OutputConfig = Field(default_factory=OutputConfig)
 
 
-class ForgeConfig(BaseModel):
+class ForgeConfig(_Model):
     forge: ForgeInfo = Field(default_factory=ForgeInfo)
     server: ServerConfig = Field(default_factory=ServerConfig)
     auth: AuthConfig = Field(default_factory=AuthConfig)
@@ -105,15 +143,12 @@ class ForgeConfig(BaseModel):
 
 
 def load_config(path: str | Path) -> ForgeConfig:
-    """Load and validate a teukhos.yaml configuration file.
-
-    Also accepts legacy mcp-forge.yaml filenames for backward compatibility.
-    """
+    """Load and validate a teukhos.yaml configuration file."""
     path = Path(path)
     if not path.exists():
         raise FileNotFoundError(f"Config file not found: {path}")
-    with open(path) as f:
-        raw = yaml.safe_load(f)
+    # Bytes let PyYAML detect UTF-8, UTF-8 with BOM and UTF-16 instead of using the locale codec
+    raw = yaml.safe_load(path.read_bytes())
     if raw is None:
         raise ValueError(f"Config file is empty: {path}")
     return ForgeConfig.model_validate(raw)

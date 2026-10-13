@@ -670,3 +670,159 @@ class TestEdgeCases:
             names = {t.name for t in listed}
             assert "good_tool" in names
             assert "bad_tool" not in names
+
+
+# ---------------------------------------------------------------------------
+# Argument policy: enum, secret, adapter failures
+# ---------------------------------------------------------------------------
+
+def _argv_tool(name: str, args: list[ArgConfig], script: str = "import sys; print(sys.argv[1:])", **cli) -> ToolConfig:
+    return ToolConfig(
+        name=name,
+        adapter="cli",
+        cli=CLIAdapterConfig(command=_python_cmd(), subcommand=["-c", script], **cli),
+        args=args,
+        output=OutputConfig(),
+    )
+
+
+def _enum_of(prop: dict) -> list:
+    return next(s["enum"] for s in prop.get("anyOf", [prop]) if "enum" in s)
+
+
+class TestArgumentPolicy:
+    """Config-declared constraints are advertised to the agent and enforced."""
+
+    @pytest.mark.asyncio
+    async def test_enum_is_advertised_and_enforced(self):
+        tool = _argv_tool("enum_tool", [
+            ArgConfig(name="fmt", flag="--format", enum=["json", "text"]),
+            ArgConfig(name="level", type=ArgType.integer, flag="-l", enum=["1", 2]),
+        ])
+        client = _make_server([tool])
+        async with client:
+            props = (await client.list_tools())[0].inputSchema["properties"]
+            assert _enum_of(props["fmt"]) == ["json", "text"]
+            assert _enum_of(props["level"]) == [1, 2]
+
+            ok = await client.call_tool("enum_tool", {"fmt": "json", "level": 2})
+            assert "['--format', 'json', '-l', '2']" in ok.content[0].text
+
+            bad = await client.call_tool("enum_tool", {"fmt": "--output=/x"}, raise_on_error=False)
+            assert bad.is_error
+
+    @pytest.mark.asyncio
+    async def test_secret_default_hidden_and_redacted(self):
+        tool = _argv_tool(
+            "secret_tool",
+            [
+                ArgConfig(name="token", flag="--token", secret=True, default="sk-CONFIG-SECRET"),
+                ArgConfig(name="code", type=ArgType.integer, positional=True, required=True),
+            ],
+            script="import sys; print(sys.argv[1:]); sys.exit(int(sys.argv[-1]))",
+        )
+        client = _make_server([tool])
+        async with client:
+            props = (await client.list_tools())[0].inputSchema["properties"]
+            assert "token" not in props
+
+            for code in (0, 3):
+                text = (await client.call_tool("secret_tool", {"code": code})).content[0].text
+                assert "sk-CONFIG-SECRET" not in text
+                assert "[REDACTED]" in text
+
+            override = await client.call_tool(
+                "secret_tool", {"code": 0, "token": "agent-value"}, raise_on_error=False
+            )
+            assert override.is_error
+
+    @pytest.mark.asyncio
+    async def test_rejected_argument_is_reported(self):
+        tool = _argv_tool("pos_tool", [ArgConfig(name="path", positional=True, required=True)])
+        client = _make_server([tool])
+        async with client:
+            result = await client.call_tool("pos_tool", {"path": "--output=/tmp/x"})
+            assert "must not start with '-'" in result.content[0].text
+
+    @pytest.mark.asyncio
+    async def test_exit_code_output_reports_timeout(self):
+        tool = ToolConfig(
+            name="slow_exit_code",
+            adapter="cli",
+            cli=CLIAdapterConfig(command=_python_cmd(), subcommand=["-c", "import time; time.sleep(5)"], timeout_seconds=1),
+            output=OutputConfig(type=OutputType.exit_code),
+        )
+        client = _make_server([tool])
+        async with client:
+            result = await client.call_tool("slow_exit_code", {})
+            assert "timed out" in result.content[0].text
+
+    @pytest.mark.asyncio
+    async def test_result_not_duplicated_as_structured_content(self):
+        client = _make_server([_echo_tool()])
+        async with client:
+            result = await client.call_tool("echo_tool", {"message": "hi"})
+            assert result.content[0].text.strip() == "hi"
+            assert result.structured_content is None
+
+
+def test_health_route_registered():
+    from starlette.testclient import TestClient
+
+    bundle = build_server(ForgeConfig(forge=ForgeInfo(name="health"), tools=[]))
+    resp = TestClient(bundle.mcp.http_app(transport="streamable-http")).get("/health")
+    assert resp.status_code == 200
+    assert resp.json() == {"status": "ok"}
+
+
+class TestOutputEdgeCases:
+    @pytest.mark.asyncio
+    async def test_json_field_over_limit_says_so(self):
+        tool = ToolConfig(
+            name="big_json",
+            adapter="cli",
+            cli=CLIAdapterConfig(
+                command=_python_cmd(),
+                subcommand=["-c", "import json; print(json.dumps({'items': ['x' * 100] * 50, 'meta': {'count': 50}}))"],
+                max_output_bytes=1000,
+            ),
+            output=OutputConfig(type=OutputType.json_field, field="meta.count"),
+        )
+        client = _make_server([tool])
+        async with client:
+            text = (await client.call_tool("big_json", {})).content[0].text
+            assert "max_output_bytes" in text
+
+    @pytest.mark.asyncio
+    async def test_json_field_non_ascii_secret_redacted(self):
+        tool = _argv_tool(
+            "json_secret",
+            [ArgConfig(name="pw", positional=True, secret=True, default="sécrét-päss")],
+            script="import json, sys; print(json.dumps({'data': {'pw': sys.argv[1]}}, ensure_ascii=False))",
+            env={"PYTHONIOENCODING": "utf-8"},
+        )
+        tool.output = OutputConfig(type=OutputType.json_field, field="data")
+        client = _make_server([tool])
+        async with client:
+            text = (await client.call_tool("json_secret", {})).content[0].text
+            assert "[REDACTED]" in text
+            assert "\\u00e9" not in text
+
+
+@pytest.mark.asyncio
+async def test_real_exit_code_minus_one_is_mapped():
+    """Only adapter failures skip mapping; a process that really exits -1 is mapped as usual."""
+    from teukhos.adapters.base import AdapterResult
+    from teukhos.engine import _build_handler
+
+    class StubAdapter:
+        async def execute(self, **kwargs):
+            return AdapterResult("partial", "", -1)
+
+        def redact(self, text):
+            return text
+
+    output = OutputConfig(type=OutputType.exit_code, exit_codes={-1: "hung up"})
+    tool = ToolConfig(name="stub", cli=CLIAdapterConfig(command="x"), output=output)
+    handler = _build_handler(tool, StubAdapter(), output)
+    assert await handler() == "hung up"

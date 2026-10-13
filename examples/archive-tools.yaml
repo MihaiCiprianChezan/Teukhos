@@ -91,16 +91,19 @@ tools:
       command: python
       subcommand:
         - "-c"
-        - >-
-          import zipfile,sys,os;
-          archive=sys.argv[1];source=sys.argv[2];
-          with zipfile.ZipFile(archive,'w',zipfile.ZIP_DEFLATED) as zf:
-           if os.path.isfile(source):zf.write(source)
-           else:
-            for root,dirs,files in os.walk(source):
-             for f in files:
-              fp=os.path.join(root,f);zf.write(fp,os.path.relpath(fp,os.path.dirname(source)))
-          ;print(f'Created {archive}')
+        # Literal block (|): a folded block (>-) would join these lines and break the indentation
+        - |
+          import os, sys, zipfile
+          archive, source = sys.argv[1], sys.argv[2]
+          with zipfile.ZipFile(archive, "w", zipfile.ZIP_DEFLATED) as zf:
+              if os.path.isfile(source):
+                  zf.write(source)
+              else:
+                  for root, dirs, files in os.walk(source):
+                      for name in files:
+                          path = os.path.join(root, name)
+                          zf.write(path, os.path.relpath(path, os.path.dirname(source)))
+          print(f"Created {archive}")
       timeout_seconds: 120
     args:
       - name: archive
@@ -123,15 +126,15 @@ tools:
       command: python
       subcommand:
         - "-c"
-        - >-
-          import zipfile,sys;
-          archive=sys.argv[1];
-          with zipfile.ZipFile(archive,'r') as zf:
-           print(f'{"Size":>10}  {"Compressed":>10}  {"Name"}');
-           print('-'*50);
-           for info in zf.infolist():
-            print(f'{info.file_size:>10}  {info.compress_size:>10}  {info.filename}')
-           ;print(f'\n{len(zf.infolist())} files, {sum(i.file_size for i in zf.infolist())} bytes uncompressed')
+        - |
+          import sys, zipfile
+          with zipfile.ZipFile(sys.argv[1]) as zf:
+              infos = zf.infolist()
+              print(f"{'Size':>10}  {'Compressed':>10}  Name")
+              print("-" * 50)
+              for info in infos:
+                  print(f"{info.file_size:>10}  {info.compress_size:>10}  {info.filename}")
+              print(f"\n{len(infos)} files, {sum(i.file_size for i in infos)} bytes uncompressed")
       timeout_seconds: 15
     args:
       - name: archive
@@ -149,7 +152,10 @@ tools:
       command: python
       subcommand:
         - "-c"
-        - "import hashlib,sys; f=sys.argv[1]; h=hashlib.sha256(); [h.update(chunk) for chunk in iter(lambda:open(f,'rb').read(8192),b'')]; print(f'{h.hexdigest()}  {f}')"
+        - |
+          import hashlib, sys
+          with open(sys.argv[1], "rb") as f:
+              print(f"{hashlib.file_digest(f, 'sha256').hexdigest()}  {sys.argv[1]}")
       timeout_seconds: 60
     args:
       - name: file

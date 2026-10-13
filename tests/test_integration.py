@@ -170,3 +170,21 @@ async def test_all_example_configs_load():
         assert bundle is not None
         tools = await bundle.mcp.list_tools()
         assert len(tools) > 0
+
+
+@pytest.mark.asyncio
+async def test_archive_tools_zip_and_checksum(tmp_path):
+    """E2E: the python-script archive tools run (they were a syntax error and an endless loop)."""
+    import hashlib
+
+    bundle = build_server(load_config(EXAMPLES_DIR / "archive-tools.yaml"))
+    source = tmp_path / "a.txt"
+    source.write_text("hello")
+    archive = tmp_path / "a.zip"
+
+    created = await (await bundle.mcp.get_tool("zip_create")).fn(archive=str(archive), source=str(source))
+    assert "Created" in created
+    listing = await (await bundle.mcp.get_tool("zip_list")).fn(archive=str(archive))
+    assert "a.txt" in listing and "1 files" in listing
+    checksum = await (await bundle.mcp.get_tool("file_checksum")).fn(file=str(source))
+    assert checksum.startswith(hashlib.sha256(b"hello").hexdigest())

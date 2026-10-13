@@ -113,15 +113,28 @@ def test_claude_desktop_install_stdio(tmp_path):
     assert data["mcpServers"]["teukhos-test"]["args"] == ["serve", str(Path("/path/to/config.yaml"))]
 
 
-def test_claude_desktop_install_http(tmp_path):
+def test_claude_desktop_install_http_refused(tmp_path):
+    """Claude Desktop skips url entries in its config file, so --url must fail clearly."""
     config_file = tmp_path / "claude_desktop_config.json"
     installer = ClaudeDesktopInstaller()
     installer._config_path_override = {InstallScope.global_: config_file}
-    installer.install_http("teukhos-test", "http://localhost:8765/mcp", "literal-key")
-    data = json.loads(config_file.read_text())
-    entry = data["mcpServers"]["teukhos-test"]
-    assert entry["url"] == "http://localhost:8765/mcp"
-    assert entry["headers"]["Authorization"] == "Bearer literal-key"
+    with pytest.raises(ValueError, match="only supports local"):
+        installer.install_http("teukhos-test", "http://localhost:8765/mcp", "literal-key")
+    assert not config_file.exists()
+
+
+def test_claude_desktop_config_paths(tmp_path, monkeypatch):
+    import teukhos.installers.claude_desktop as cd
+    monkeypatch.setattr(cd.platform, "system", lambda: "Linux")
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
+    assert ClaudeDesktopInstaller().config_path(InstallScope.global_) == (
+        tmp_path / "xdg" / "Claude" / "claude_desktop_config.json"
+    )
+    monkeypatch.setattr(cd.platform, "system", lambda: "Windows")
+    monkeypatch.setenv("APPDATA", str(tmp_path / "roaming"))
+    assert ClaudeDesktopInstaller().config_path(InstallScope.global_) == (
+        tmp_path / "roaming" / "Claude" / "claude_desktop_config.json"
+    )
 
 
 def test_claude_desktop_uninstall(tmp_path):
@@ -148,9 +161,14 @@ def test_json_uninstall_missing_config_is_noop(tmp_path):
 
 def test_json_install_http_unresolved_env_key_raises(tmp_path, monkeypatch):
     """Clients without ${VAR} support must not get a literal 'Bearer env:VAR' header."""
+    from teukhos.installers.cursor import CursorInstaller
+
+    class NoSubstitution(CursorInstaller):
+        supports_env_substitution = False
+
     monkeypatch.delenv("TEUKHOS_TEST_UNSET_KEY", raising=False)
-    config_file = tmp_path / "claude_desktop_config.json"
-    installer = ClaudeDesktopInstaller()
+    config_file = tmp_path / "mcp.json"
+    installer = NoSubstitution()
     installer._config_path_override = {InstallScope.global_: config_file}
     with pytest.raises(ValueError, match="TEUKHOS_TEST_UNSET_KEY"):
         installer.install_http("teukhos-test", "http://h/mcp", "env:TEUKHOS_TEST_UNSET_KEY")
@@ -569,13 +587,50 @@ def test_opencode_slug():
     assert installer.name == "OpenCode"
 
 
-def test_opencode_install_stdio(tmp_path):
-    config_file = tmp_path / "opencode.json"
+def _opencode(config_file, monkeypatch):
+    import teukhos.installers.base as base_mod
+    monkeypatch.setattr(base_mod.shutil, "which", lambda name: "/bin/teukhos")
     installer = OpenCodeInstaller()
     installer._config_path_override = {InstallScope.global_: config_file}
-    installer.install_stdio("teukhos-test", Path("/path/to/config.yaml"))
+    return installer
+
+
+def test_opencode_install_stdio(tmp_path, monkeypatch):
+    """OpenCode reads "mcp" with type local and the command as one array (not mcpServers/args)."""
+    config_file = tmp_path / "opencode.json"
+    config_file.write_text(json.dumps({"$schema": "https://opencode.ai/config.json", "theme": "x"}))
+    _opencode(config_file, monkeypatch).install_stdio("teukhos-test", Path("/path/to/config.yaml"))
     data = json.loads(config_file.read_text())
-    assert "teukhos-test" in data["mcpServers"]
+    assert "mcpServers" not in data
+    assert data["theme"] == "x"
+    assert data["mcp"]["teukhos-test"] == {
+        "type": "local",
+        "command": ["/bin/teukhos", "serve", str(Path("/path/to/config.yaml"))],
+    }
+
+
+@pytest.mark.parametrize("key, header", [
+    ("env:TEUKHOS_API_KEY", "Bearer {env:TEUKHOS_API_KEY}"),
+    ("literal-key", "Bearer literal-key"),
+])
+def test_opencode_install_http(tmp_path, monkeypatch, key, header):
+    config_file = tmp_path / "opencode.json"
+    _opencode(config_file, monkeypatch).install_http("teukhos-test", "http://h:8765/mcp", key)
+    assert json.loads(config_file.read_text())["mcp"]["teukhos-test"] == {
+        "type": "remote",
+        "url": "http://h:8765/mcp",
+        "oauth": False,
+        "headers": {"Authorization": header},
+    }
+
+
+def test_opencode_uninstall(tmp_path, monkeypatch):
+    config_file = tmp_path / "opencode.json"
+    installer = _opencode(config_file, monkeypatch)
+    installer.install_stdio("teukhos-a", Path("/a.yaml"))
+    installer.install_stdio("teukhos-b", Path("/b.yaml"))
+    installer.uninstall("teukhos-a")
+    assert set(json.loads(config_file.read_text())["mcp"]) == {"teukhos-b"}
 
 
 def test_opencode_project_scope(tmp_path):
@@ -584,7 +639,7 @@ def test_opencode_project_scope(tmp_path):
     installer._config_path_override = {InstallScope.project: config_file}
     installer.install_stdio("teukhos-test", Path("/path/to/config.yaml"), scope=InstallScope.project)
     data = json.loads(config_file.read_text())
-    assert "teukhos-test" in data["mcpServers"]
+    assert data["mcp"]["teukhos-test"]["type"] == "local"
 
 
 from teukhos.installers.trae import TraeInstaller

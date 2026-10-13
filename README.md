@@ -145,7 +145,7 @@ Teukhos can register with these MCP-compatible AI clients:
 
 | Client | Slug | Project Scope | Config Format |
 |--------|------|:------------:|:------------:|
-| Claude Desktop | `claude-desktop` | — | JSON |
+| Claude Desktop | `claude-desktop` | — | JSON (stdio only; no `--url`) |
 | Claude Code | `claude-code` | Yes | JSON |
 | Cursor | `cursor` | Yes | JSON |
 | GitHub Copilot / VS Code | `github-copilot` | Yes | JSON |
@@ -158,13 +158,15 @@ Teukhos can register with these MCP-compatible AI clients:
 | Kiro | `kiro` | Yes | JSON |
 | Augment Code | `augment` | — | JSON |
 | CodeBuddy | `codebuddy` | Yes | JSON |
-| OpenCode | `opencode` | Yes | JSON |
+| OpenCode | `opencode` | Yes | JSON (`mcp` key) |
 | Trae | `trae` | Yes | JSON |
 
 ```bash
 teukhos clients              # see which are detected on your system
 teukhos install --all         # register with all detected clients
 ```
+
+Claude Desktop's config file only accepts local (stdio) servers, so `install --url` refuses it; a public HTTPS server can be added in Claude Desktop under Customize > Connectors. OpenCode entries use its own format (`"mcp"`, `type: local/remote`, `{env:VAR}` in headers).
 
 ---
 

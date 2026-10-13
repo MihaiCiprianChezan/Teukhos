@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import platform
 from pathlib import Path
 
@@ -24,8 +25,15 @@ class ClaudeDesktopInstaller(JsonMcpInstaller):
                 / "Claude" / "claude_desktop_config.json"
             )
         elif system == "Windows":
-            return (
-                Path.home() / "AppData" / "Roaming"
-                / "Claude" / "claude_desktop_config.json"
-            )
-        return Path.home() / ".config" / "claude" / "claude_desktop_config.json"
+            appdata = os.environ.get("APPDATA") or Path.home() / "AppData" / "Roaming"
+            return Path(appdata) / "Claude" / "claude_desktop_config.json"
+        config_home = os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config"
+        return Path(config_home) / "Claude" / "claude_desktop_config.json"
+
+    def install_http(self, server_name: str, url: str, api_key: str | None,
+                     scope: InstallScope = InstallScope.global_) -> None:
+        # Claude Desktop skips url entries in this file (and then drops them on its next write)
+        raise ValueError(
+            "Claude Desktop's config file only supports local (stdio) servers. Install without --url, "
+            "or add a public HTTPS server under Customize > Connectors in Claude Desktop."
+        )

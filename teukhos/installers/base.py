@@ -127,26 +127,16 @@ class JsonMcpInstaller(BaseInstaller):
     def detect(self) -> bool:
         return self.config_path(InstallScope.global_).parent.exists()
 
-    def install_stdio(self, server_name: str, teukhos_config_path: Path,
-                      scope: InstallScope = InstallScope.global_) -> None:
-        teukhos_bin = shutil.which("teukhos") or "teukhos"
-        effective = self._effective_scope(scope)
-        path = self.config_path(effective)
-        config = read_json_config(path)
+    def stdio_entry(self, teukhos_bin: str, teukhos_config_path: Path) -> dict:
         entry: dict = {
             "command": teukhos_bin,
             "args": ["serve", str(teukhos_config_path)],
         }
         if self.stdio_needs_type_field:
             entry["type"] = "stdio"
-        merge_mcp_entry(config, server_name, entry, key=self.config_key)
-        atomic_write_json(path, config)
+        return entry
 
-    def install_http(self, server_name: str, url: str, api_key: str | None,
-                     scope: InstallScope = InstallScope.global_) -> None:
-        effective = self._effective_scope(scope)
-        path = self.config_path(effective)
-        config = read_json_config(path)
+    def http_entry(self, url: str, api_key: str | None) -> dict:
         entry: dict = {"url": url}
         if self.stdio_needs_type_field:
             entry["type"] = "http"
@@ -160,7 +150,22 @@ class JsonMcpInstaller(BaseInstaller):
                 entry["headers"] = {"Authorization": f"Bearer {resolve_key(api_key)}"}
             else:
                 entry["headers"] = {"Authorization": f"Bearer {api_key}"}
-        merge_mcp_entry(config, server_name, entry, key=self.config_key)
+        return entry
+
+    def install_stdio(self, server_name: str, teukhos_config_path: Path,
+                      scope: InstallScope = InstallScope.global_) -> None:
+        teukhos_bin = shutil.which("teukhos") or "teukhos"
+        path = self.config_path(self._effective_scope(scope))
+        config = read_json_config(path)
+        merge_mcp_entry(config, server_name, self.stdio_entry(teukhos_bin, teukhos_config_path),
+                        key=self.config_key)
+        atomic_write_json(path, config)
+
+    def install_http(self, server_name: str, url: str, api_key: str | None,
+                     scope: InstallScope = InstallScope.global_) -> None:
+        path = self.config_path(self._effective_scope(scope))
+        config = read_json_config(path)
+        merge_mcp_entry(config, server_name, self.http_entry(url, api_key), key=self.config_key)
         atomic_write_json(path, config)
 
     def uninstall(self, server_name: str,

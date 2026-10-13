@@ -564,7 +564,7 @@ tools:
 
 **Coding agents** that do their own OAuth (Claude Code, Codex, Cursor, OpenCode) connect with `teukhos install --url <public_url>/mcp --key ""`; without `--key ""` they would send a static API-key header instead of logging in.
 
-**Audit log.** `server.audit_log` writes one JSON line per call: time, user (the verified email the rules use, else the subject), subject, tool, arguments (secret args as `[REDACTED]`), ok, exit code, error and duration. Calls refused by access rules or argument validation are recorded too, without their arguments.
+**Audit log.** `server.audit_log` writes one JSON line per call: time, user (the verified email the rules use, else the subject), subject, tool, arguments (secret args as `[REDACTED]`), ok, exit code, error and duration. Calls refused by access rules or argument validation are recorded too, without their arguments. The file is created owner-only (0600 on Linux/macOS) and must not be a symlink.
 
 ### Browser Access (CORS and Origin)
 

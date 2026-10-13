@@ -19,9 +19,11 @@ class AuditLog:
 
     def __init__(self, path: str):
         self.path = Path(os.path.expanduser(path))
+        if self.path.is_symlink() or self.path.is_dir():
+            raise ValueError(f"server.audit_log must be a regular file, not a symlink or directory: {self.path}")
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        with open(self.path, "a", encoding="utf-8"):
-            pass
+        # Owner-only on POSIX: the log holds user identities and tool arguments
+        os.close(os.open(self.path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600))
         self._lock = threading.Lock()
 
     def record(self, **entry: Any) -> None:

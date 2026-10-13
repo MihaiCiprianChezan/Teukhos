@@ -67,3 +67,16 @@ def test_audit_log_path_checked_at_startup(tmp_path):
     config = ForgeConfig(server=ServerConfig(audit_log=str(blocker / "audit.jsonl")))
     with pytest.raises(OSError):
         build_server(config)
+
+
+def test_audit_log_must_be_a_regular_file(tmp_path):
+    with pytest.raises(ValueError, match="regular file"):
+        build_server(ForgeConfig(server=ServerConfig(audit_log=str(tmp_path))))
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX file modes")
+def test_audit_log_created_owner_only(tmp_path):
+    import stat
+    log = tmp_path / "audit.jsonl"
+    build_server(ForgeConfig(server=ServerConfig(audit_log=str(log))))
+    assert stat.S_IMODE(log.stat().st_mode) == 0o600

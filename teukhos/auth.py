@@ -9,6 +9,22 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 
 
+def claims_user(claims: dict, subject: str | None = None) -> str | None:
+    """The caller's name from token claims: email where the provider has one, else login/subject."""
+    for name in ("email", "upn", "preferred_username", "login"):
+        if claims.get(name):
+            return str(claims[name])
+    return subject
+
+
+def current_user() -> str | None:
+    """The authenticated caller of the current MCP request (OAuth modes), or None."""
+    from fastmcp.server.dependencies import get_access_token
+
+    token = get_access_token()
+    return claims_user(token.claims or {}, token.subject) if token else None
+
+
 def resolve_key(value: str) -> str:
     """Resolve an API key value.
 

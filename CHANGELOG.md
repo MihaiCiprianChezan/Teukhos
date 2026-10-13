@@ -5,6 +5,29 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [Unreleased]
+
+### Added
+- **Audit log:** `server.audit_log: <path>` writes one JSON line per tool call: time, user (OAuth modes), tool, arguments (secret args shown as `[REDACTED]`), ok, exit code, error and duration. The path is checked at startup.
+- **Tool metadata:** `tools[].title` and `tools[].annotations` (`read_only`, `destructive`, `idempotent`, `open_world`) are published to clients, which use them for approval prompts and parallel calls. `examples/git-tools.yaml` marks its tools read-only.
+- `forge.version` and `forge.description` are sent as the server's version and instructions (they were ignored).
+- **Antigravity installer** (`--client antigravity`), Google's successor to Gemini CLI for consumer plans.
+
+### Changed
+- Tool failures (non-zero exit, timeout, missing binary, rejected arguments, unparseable or oversized `json_field` output) are returned with `isError: true`, so clients can tell a failed call from a result. The text is unchanged and nothing extra is logged.
+- **Windsurf is now Devin Desktop:** `--client devin` writes `~/.config/devin/mcp_config.json` (`%APPDATA%\devin` on Windows) and `.devin/mcp_config.json`; `--client windsurf` still works as an alias.
+- Roo Code (shut down 2026-05) and Continue.dev (no longer maintained) installers are kept for existing installs but not developed further.
+
+### Fixed
+- **Claude Code:** `--project` writes `.mcp.json` at the project root (Claude Code never read servers from `.claude/settings.json`), and HTTP entries carry `"type": "http"` (without it Claude Code treats the entry as stdio).
+- **Remote installs with an API key** use each client's own env-variable syntax: `${env:VAR}` for Cursor, VS Code, Cline, Devin and Roo Code; `${VAR}` for Claude Code, Kiro and CodeBuddy. Gemini CLI gets the variable added to `security.environmentVariableRedaction.allowed`, because it strips variables named like `*KEY*` before expanding headers. Continue, Augment, Trae and Antigravity cannot expand variables in headers, so the key is resolved at install time.
+- **Cline** reads `~/.cline/data/settings/cline_mcp_settings.json` (shared by its VS Code, CLI and JetBrains clients; `CLINE_DIR`, `CLINE_DATA_DIR` and `CLINE_MCP_SETTINGS_PATH` are honoured) and needs `"type": "streamableHttp"` for remote servers.
+- **Trae** reads `<AppData>/Trae/User/mcp.json`, not `~/.trae/mcp.json`; **Continue** reads `~/.continue/mcpServers/`, not `~/.continue/mcp.json`; **Roo Code** reads `mcp_settings.json`.
+- **Augment** supports project scope (`.augment/settings.json`).
+- Claude Code detection no longer always reports the client as installed.
+
+---
+
 ## [0.4.0] — 2026-10-13
 
 ### Security

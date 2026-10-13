@@ -59,6 +59,7 @@ class ServerConfig(_Model):
     host: str = "127.0.0.1"
     port: int = 8765
     cors_origins: list[str] | None = None
+    audit_log: str | None = None  # JSONL file: one line per tool call (who, tool, args, outcome)
 
 
 class AuthConfig(_Model):

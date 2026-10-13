@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import inspect
+import logging
+import time
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
@@ -11,7 +13,10 @@ from fastmcp.tools import ToolResult
 from mcp.types import ToolAnnotations
 from starlette.responses import JSONResponse
 
+from teukhos.adapters.base import AdapterResult
 from teukhos.adapters.cli import CLIAdapter
+from teukhos.audit import AuditLog
+from teukhos.auth import current_user, resolve_key
 from teukhos.config import ARG_TYPE_MAP, ArgType, AuthMode, ForgeConfig, OutputConfig, OutputType, ToolConfig
 from teukhos.output import OutputMapper, OutputMappingError
 
@@ -32,11 +37,13 @@ def build_server(config: ForgeConfig) -> ServerBundle:
         instructions=config.forge.description or None,
     )
 
+    audit = AuditLog(config.server.audit_log) if config.server.audit_log else None
+
     for tool_config in config.tools:
         adapter = _create_adapter(tool_config)
         if adapter is None:
             continue
-        handler = _build_handler(tool_config, adapter, tool_config.output)
+        handler = _build_handler(tool_config, adapter, tool_config.output, audit)
         mcp.tool(
             name=tool_config.name,
             title=tool_config.title,
@@ -52,10 +59,6 @@ def build_server(config: ForgeConfig) -> ServerBundle:
     # Resolve auth keys (best-effort: missing env vars produce warnings, not crashes)
     resolved_keys: list[str] = []
     if config.auth.mode == AuthMode.api_key and config.auth.api_keys:
-        import logging
-
-        from teukhos.auth import resolve_key
-
         logger = logging.getLogger("teukhos")
         for raw_key in config.auth.api_keys:
             try:
@@ -95,6 +98,7 @@ def _build_handler(
     tool_config: ToolConfig,
     adapter: CLIAdapter,
     output_config: OutputConfig,
+    audit: AuditLog | None = None,
 ) -> Any:
     """Dynamically build an async handler function with typed parameters.
 
@@ -129,13 +133,33 @@ def _build_handler(
 
     annotations["return"] = str
 
+    secret_names = {a.name for a in args if a.secret}
+
     def _error(text: str) -> ToolResult:
         # isError lets the client tell a failed call from a result; returning it (rather than
         # raising ToolError) keeps expected tool failures out of the server log
         return ToolResult(content=adapter.redact(text), is_error=True)
 
     async def _handler(**kwargs: Any) -> str | ToolResult:
+        started = time.monotonic()
         result = await adapter.execute(**kwargs)
+        response = _respond(result)
+        if audit:
+            audit.record(
+                user=current_user(),
+                tool=tool_config.name,
+                args={
+                    k: "[REDACTED]" if k in secret_names else (adapter.redact(v) if isinstance(v, str) else v)
+                    for k, v in kwargs.items() if v is not None
+                },
+                ok=not isinstance(response, ToolResult),
+                exit_code=None if result.failed else result.exit_code,
+                error=result.stderr[:500] if result.failed else None,
+                duration_ms=round((time.monotonic() - started) * 1000),
+            )
+        return response
+
+    def _respond(result: AdapterResult) -> str | ToolResult:
         if result.failed:  # timeout, not found, rejected args
             return _error(result.stderr)
         if result.exit_code != 0 and output_config.type != OutputType.exit_code:

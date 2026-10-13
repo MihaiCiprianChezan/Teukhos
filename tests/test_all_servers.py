@@ -7,6 +7,7 @@ Catches concurrency issues, transport bugs, and server startup failures.
 from __future__ import annotations
 
 import asyncio
+import inspect
 import os
 import subprocess
 import sys
@@ -22,6 +23,10 @@ from teukhos.engine import build_server
 
 EXAMPLES_DIR = Path(__file__).parent.parent / "examples"
 TEUKHOS_BIN = sys.executable  # We'll invoke via python -m
+
+# MCP 2026-07-28 removed ping, and fastmcp 4.x negotiates that revision by default.
+# Ping over the initialize handshake that current clients use (fastmcp 3.x has only that one).
+HANDSHAKE = {"mode": "legacy"} if "mode" in inspect.signature(Client).parameters else {}
 
 # Port assignments matching .vscode/mcp.json
 HTTP_SERVERS = [
@@ -53,7 +58,7 @@ class TestStdioServers:
         """Ping each server through stdio MCP protocol."""
         config = load_config(yaml_file)
         bundle = build_server(config)
-        async with Client(bundle.mcp) as client:
+        async with Client(bundle.mcp, **HANDSHAKE) as client:
             # MCP-level ping (protocol handshake)
             assert await client.ping() is True
 
@@ -227,7 +232,7 @@ class TestHTTPServers:
                 continue
             try:
                 url = f"http://127.0.0.1:{port}/mcp"
-                async with Client(url) as client:
+                async with Client(url, **HANDSHAKE) as client:
                     # MCP protocol ping
                     mcp_ping = await client.ping()
                     # Our custom ping tool

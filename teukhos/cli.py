@@ -171,6 +171,8 @@ def serve(
                     allow_headers=[
                         "mcp-protocol-version",
                         "mcp-session-id",
+                        "mcp-method",  # mcp-method / mcp-name: MCP 2026-07-28 (fastmcp 4.x)
+                        "mcp-name",
                         "Authorization",
                         "Content-Type",
                     ],

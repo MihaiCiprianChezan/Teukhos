@@ -9,6 +9,7 @@ dynamic signature introspection issues.
 
 from __future__ import annotations
 
+import inspect
 import sys
 from pathlib import Path
 
@@ -30,6 +31,10 @@ from teukhos.engine import build_server
 
 EXAMPLES_DIR = Path(__file__).parent.parent / "examples"
 
+# MCP 2026-07-28 removed ping, and fastmcp 4.x negotiates that revision by default.
+# Ping over the initialize handshake that current clients use (fastmcp 3.x has only that one).
+HANDSHAKE = {"mode": "legacy"} if "mode" in inspect.signature(Client).parameters else {}
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -40,11 +45,11 @@ def _python_cmd() -> str:
     return sys.executable
 
 
-def _make_server(tools: list[ToolConfig], name: str = "test") -> Client:
+def _make_server(tools: list[ToolConfig], name: str = "test", **client_kwargs) -> Client:
     """Build a FastMCP server from tool configs and return a Client."""
     config = ForgeConfig(forge=ForgeInfo(name=name), tools=tools)
     bundle = build_server(config)
-    return Client(bundle.mcp)
+    return Client(bundle.mcp, **client_kwargs)
 
 
 def _echo_tool(name: str = "echo_tool") -> ToolConfig:
@@ -79,7 +84,7 @@ class TestMCPProtocolBasics:
     @pytest.mark.asyncio
     async def test_client_connects_and_pings(self):
         """Client can connect to server and ping it."""
-        client = _make_server([_echo_tool()])
+        client = _make_server([_echo_tool()], **HANDSHAKE)
         async with client:
             assert await client.ping() is True
 

@@ -2,7 +2,9 @@
 
 import pytest
 from fastmcp import FastMCP
+from starlette.applications import Starlette
 from starlette.middleware.cors import CORSMiddleware
+from starlette.testclient import TestClient
 from typer.testing import CliRunner
 
 from teukhos.auth import AuthMiddleware, OriginMiddleware
@@ -57,6 +59,21 @@ def test_http_middleware_order(tmp_path, run_calls, monkeypatch):
     assert result.exit_code == 0, result.output
     assert _middleware(run_calls) == [OriginMiddleware, CORSMiddleware, AuthMiddleware]
     assert "1 of 1 key(s) resolved" in result.output
+
+
+def test_cors_preflight_allows_mcp_headers(tmp_path, run_calls):
+    """Browser clients on MCP 2026-07-28 (fastmcp 4.x) also send Mcp-Method and Mcp-Name."""
+    result = _serve(tmp_path, "server:\n  transport: http\n  cors_origins: ['https://app.example']\n")
+    assert result.exit_code == 0, result.output
+    client = TestClient(Starlette(middleware=run_calls[0]["middleware"]))
+    resp = client.options("/mcp", headers={
+        "origin": "https://app.example",
+        "access-control-request-method": "POST",
+        "access-control-request-headers": (
+            "authorization, content-type, mcp-protocol-version, mcp-session-id, mcp-method, mcp-name"
+        ),
+    })
+    assert resp.status_code == 200, resp.text
 
 
 def test_http_without_auth_or_cors_still_checks_origin(tmp_path, run_calls):

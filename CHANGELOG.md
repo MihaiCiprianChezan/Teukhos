@@ -35,6 +35,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Config files are read as bytes, so UTF-8 with BOM and UTF-16 (common on Windows) load correctly; a BOM used to silently drop the first section.
 - Rich markup in names, paths or errors (e.g. `tools[/bold]`) no longer crashes `install` or `validate`, or garbles `discover` errors.
 - JSON `uninstall` no longer creates a config file for a client that has none; installs write through a symlink whose target exists (dangling links are replaced); an unresolvable `env:` key for a client without `${VAR}` support is an error instead of writing `Bearer env:VAR`.
+- **fastmcp 4.x:** CORS preflights allow the `mcp-method`/`mcp-name` headers that MCP 2026-07-28 clients send, so browser clients work with `cors_origins`. Verified against fastmcp 3.1.1, 4.0.0 and 4.1.0.
 - `examples/archive-tools.yaml`: `zip_create` and `zip_list` were Python syntax errors (a folded YAML block joined the lines), and `file_checksum` never finished (it reopened the file for every read).
 - The `serve` banner shows how many API keys resolved, not just how many are configured.
 - Tool results are sent once as text instead of also as a duplicate `structuredContent`; `json_field` objects keep non-ASCII text unescaped.

@@ -11,7 +11,7 @@
 
 > *You describe the tool. Teukhos forges it as MCP.*
 
-**Spawn production-ready MCP servers from a single YAML file. No Python programming required.**
+**Turn the CLIs you trust into safe, reviewed AI tools, from one YAML file.** Works in Claude Desktop, claude.ai and mobile, ChatGPT, LM Studio, Open WebUI and every coding agent. No Python programming required.
 
 > **Status: Beta** — Core features are stable and tested. API may change before v1.0.
 
@@ -24,18 +24,13 @@ That's it. Your CLI tools are now callable by any AI agent.
 
 ---
 
-## The Problem
+## When to Use Teukhos
 
-The MCP ecosystem has a critical gap:
+- **Chat apps that can't run a shell.** Claude Desktop, claude.ai and the Claude mobile apps, ChatGPT, LM Studio and Open WebUI only reach your CLIs through MCP tools. See [Use from Chat Apps](#use-from-chat-apps).
+- **Least privilege instead of a shell.** Each tool is one reviewed command with typed arguments, enum-pinned values and option-injection blocking. That is much narrower than letting an agent run anything (see the [Security Model](#security-model)).
+- **One machine's CLIs for a whole team.** Serve over HTTPS with login through your identity provider (Entra ID, Okta, Google, GitHub), per-tool access rules and an audit log of every call. See [Remote Access with OAuth](#remote-access-with-oauth).
 
-| What exists | What's missing |
-|---|---|
-| Raw FastMCP — write Python | **Config-as-code → running MCP server** |
-| `any-cli-mcp-server` — scrapes `--help` | **Structured, typed CLI → tool mapping** |
-| Enterprise gateways (Bifrost, MCPX) | **Lightweight, developer-owned, open-source** |
-| Visual builders (Langflow, n8n) | **CI/CD-native, GitOps-friendly runtime** |
-
-Teukhos fills this gap. Define your tools in YAML. Run one command. Done.
+**When not to:** coding agents with a shell (Claude Code, Codex, Cursor, Copilot) can run a CLI directly, and an [Agent Skill](https://agentskills.io) teaches them how. Use Teukhos there only when you want them limited to specific, reviewed commands.
 
 ---
 
@@ -99,6 +94,7 @@ teukhos clients                   List supported clients & detection status
 teukhos wait-ready                Poll /health until ready — use in CI
 teukhos version                   Print version
 teukhos discover <binary>         Auto-generate config from --help
+teukhos bundle [config]           Build a Claude Desktop extension (.mcpb)
 ```
 
 **Options for `serve`:**
@@ -151,15 +147,17 @@ Teukhos can register with these MCP-compatible AI clients:
 | GitHub Copilot / VS Code | `github-copilot` | Yes | JSON |
 | Gemini CLI | `gemini-cli` | Yes | JSON |
 | Codex | `codex` | Yes | TOML |
-| Windsurf | `windsurf` | Yes | JSON |
+| Devin Desktop (formerly Windsurf) | `devin` (or `windsurf`) | Yes | JSON |
+| Antigravity | `antigravity` | Yes | JSON |
 | Cline | `cline` | — | JSON |
-| Roo Code | `roo-code` | Yes | JSON |
-| Continue.dev | `continue` | Yes | JSON |
+| Roo Code (discontinued) | `roo-code` | Yes | JSON |
+| Continue.dev (no longer maintained) | `continue` | Yes | JSON |
 | Kiro | `kiro` | Yes | JSON |
-| Augment Code | `augment` | — | JSON |
+| Augment Code | `augment` | Yes | JSON |
 | CodeBuddy | `codebuddy` | Yes | JSON |
 | OpenCode | `opencode` | Yes | JSON (`mcp` key) |
 | Trae | `trae` | Yes | JSON |
+| LM Studio | `lm-studio` | — | JSON |
 
 ```bash
 teukhos clients              # see which are detected on your system
@@ -167,6 +165,35 @@ teukhos install --all         # register with all detected clients
 ```
 
 Claude Desktop's config file only accepts local (stdio) servers, so `install --url` refuses it; a public HTTPS server can be added in Claude Desktop under Customize > Connectors. OpenCode entries use its own format (`"mcp"`, `type: local/remote`, `{env:VAR}` in headers).
+
+For `--url` installs, each client gets its own env-variable syntax in the `Authorization` header (`${env:VAR}`, `${VAR}`, `{env:VAR}`). Continue, Augment, Trae, Antigravity and LM Studio cannot expand variables in headers, so the key is resolved at install time and stored in their config file.
+
+---
+
+## Use from Chat Apps
+
+| App | How to connect | Auth |
+|---|---|---|
+| **Claude Desktop** | `teukhos bundle teukhos.yaml`, then double-click the `.mcpb` (or `teukhos install --client claude-desktop`) | local |
+| **LM Studio** | `teukhos install teukhos.yaml --client lm-studio` | local |
+| **Open WebUI** | `teukhos serve -t http`, then add the connection below | API key |
+| **claude.ai, Claude mobile** | public HTTPS + [OAuth](#remote-access-with-oauth); Customize > Connectors > Add custom connector, URL `<public_url>/mcp` | OAuth |
+| **ChatGPT** (Business/Enterprise/Edu; Pro read-only) | public HTTPS + [OAuth](#remote-access-with-oauth); chatgpt.com/plugins > Add custom MCP server, URL `<public_url>/mcp` | OAuth |
+
+**Claude Desktop bundle.** `teukhos bundle` writes a Claude Desktop extension containing your YAML. Claude Desktop installs Teukhos from PyPI on first use (it brings its own `uv`), so the user needs internet but no Python. The CLIs the tools wrap must be on their PATH. Secret args with `default: env:VAR` become masked settings the user fills in at install.
+
+**Open WebUI** (v0.6.31+): Admin Settings > Integrations > External Tool Servers > Add Connection, type *MCP (Streamable HTTP)*, URL `http://host.docker.internal:8765/mcp` when Open WebUI runs in Docker, auth *Bearer* with your Teukhos key. The same connection as a `TOOL_SERVER_CONNECTIONS` environment value (applied on first start):
+
+```json
+[{"type": "mcp", "url": "http://host.docker.internal:8765/mcp", "path": "", "auth_type": "bearer",
+  "key": "<TEUKHOS_KEY>", "config": {"enable": true,
+  "access_grants": [{"principal_type": "user", "principal_id": "*", "permission": "read"}]},
+  "info": {"id": "teukhos", "name": "Teukhos", "description": "CLI tools"}}]
+```
+
+**ChatGPT without a public URL:** OpenAI's [Secure MCP Tunnel](https://developers.openai.com/api/docs/guides/custom-mcp-server) runs `teukhos serve` over stdio behind an outbound-only connection: `tunnel-client init --sample sample_mcp_stdio_local --profile teukhos --tunnel-id <id> --mcp-command "teukhos serve /abs/path/teukhos.yaml"`, then `tunnel-client run --profile teukhos`. Over stdio there is no per-user login, so access rules and audit users don't apply.
+
+Annotate read-only tools (`annotations: {read_only: true}`): ChatGPT asks for confirmation on every tool without that hint, and Codex uses it to auto-approve and run calls in parallel.
 
 ---
 
@@ -268,18 +295,30 @@ server:
   host: "127.0.0.1"           # use 0.0.0.0 for remote (add auth!)
   port: 8765
   cors_origins: ["http://localhost:6274"]  # browser origins allowed over HTTP (default: none); "*" only with auth
+  public_url: null             # oauth: the https origin clients use, e.g. https://tools.example.com
+  audit_log: null              # path of a JSONL file with one line per tool call
+  json_response: false         # JSON instead of SSE responses (Cloudflare quick tunnels)
 
 auth:
-  mode: none                   # none | api_key
+  mode: none                   # none | api_key | oauth
   api_keys:
     - "env:TEUKHOS_API_KEY"    # reads from environment variable (recommended)
     - "env:MY_CUSTOM_KEY"      # any env var name with env: prefix
     - "literal-key-here"       # or use a literal string directly
+  oauth: null                  # see "Remote Access with OAuth"
+  allow: null                  # oauth: who may use this server (emails/domains/groups/subjects)
 
 tools:
   - name: tool_name            # snake_case — used as MCP tool ID
+    title: null                # display name (default: derived from the name)
     description: "What the LLM reads to decide when to call this tool"
-    adapter: cli               # cli is the only adapter in v0.2
+    annotations:               # hints clients act on, e.g. auto-approving read-only tools
+      read_only: true
+      destructive: false
+      idempotent: true
+      open_world: false
+    allow: null                # oauth: who may see and call this tool, on top of auth.allow
+    adapter: cli               # cli is the only adapter
 
     cli:
       command: "mybinary"      # must be on PATH or absolute path
@@ -298,7 +337,8 @@ tools:
         positional: false      # true = append at end of command
         default: null
         enum: []               # allowed values: shown to the LLM and enforced
-        secret: false          # with a default: hidden from the LLM and redacted from output
+        secret: false          # with a default: hidden from the LLM and redacted from output;
+                               # default: "env:VAR" reads the value from the environment per call
 
     output:
       type: stdout             # stdout | stderr | json_field | exit_code
@@ -318,7 +358,8 @@ A `teukhos.yaml` is executable configuration: it decides which binaries run. Rea
 - **No `-` option injection.** A positional or flag-less value that starts with `-` is rejected, so the LLM can't turn `path` into `--output=/etc/x`. Enum values and the configured default are exempt. Pass dash-prefixed input through a `flag:` instead. Windows tools that take `/X` switches (robocopy, findstr, reg) are not covered; give them `enum` or flag-bound args.
 - **`enum` is enforced.** The allowed values are published in the tool schema and anything else is refused before the command runs. Quote YAML words like `"on"`/`"yes"`, which would otherwise be booleans.
 - **Interpreters need their own safe mode.** A free-form argument to `sqlite3`, `psql`, `python -c` or `node -e` is code. `examples/database-tools.yaml` runs `sqlite3 -safe -readonly` and pins dot-commands with `enum`; `psql` has no safe mode, so only fixed queries are exposed.
-- **`secret` defaults stay with the operator.** A secret arg with a `default` is not offered to the LLM, and a string default is replaced with `[REDACTED]` in tool output. Redaction matches the literal value only, so prefer `cli.env` for real credentials.
+- **`secret` defaults stay with the operator.** A secret arg with a `default` is not offered to the LLM, and its value is replaced with `[REDACTED]` in tool output and the audit log. Use `default: env:VAR` to keep the value out of the YAML. Redaction matches the literal value only, so prefer `cli.env` for credentials a tool may echo in another form.
+- **Failures are flagged.** Non-zero exits, timeouts and rejected arguments come back with `isError: true`, so clients can tell a failed call from a result.
 - **Errors are returned as-is.** On a non-zero exit the tool's stderr (or stdout) goes back to the LLM. `json_field`/`stderr`/`exit_code` only shape a successful result; don't rely on them to withhold fields.
 - **Output is capped** at `max_output_bytes` per stream. `json_field` needs the whole JSON, so raise the limit for tools with large JSON output.
 - **Windows batch files.** A bare name like `npx` or `az` that has no `.exe` falls back to its `.cmd`/`.bat` shim. Because `cmd.exe` re-parses batch arguments, values containing `" % ! ^ & | < > ( ) , ; =` or line breaks are rejected for those tools; point `command` at the real `.exe` (e.g. `node` plus the script path) if you need them.
@@ -473,6 +514,56 @@ Keys in config use the `env:` prefix convention:
 
 With `mode: api_key`, every HTTP path except `/health` needs `Authorization: Bearer <key>`. If none of the configured keys resolves (for example the env var isn't set), `serve` refuses to start instead of running unauthenticated.
 
+### Remote Access with OAuth
+
+For claude.ai, the Claude mobile apps, ChatGPT or a team, let people log in with your identity provider instead of sharing an API key. Teukhos becomes the OAuth server those clients talk to (through fastmcp's OAuth proxy), and your identity provider needs exactly one redirect URI: `<public_url>/auth/callback`. Claude and ChatGPT register themselves automatically.
+
+```yaml
+server:
+  transport: http
+  public_url: https://tools.example.com   # users add https://tools.example.com/mcp
+  audit_log: /var/log/teukhos/audit.jsonl
+
+auth:
+  mode: oauth
+  oauth:
+    provider: entra                        # entra | google | github | oidc (Okta, Keycloak, Auth0, ...)
+    tenant_id: 00000000-0000-0000-0000-000000000000
+    client_id: env:TEUKHOS_OAUTH_CLIENT_ID
+    client_secret: env:TEUKHOS_OAUTH_CLIENT_SECRET
+    signing_key: env:TEUKHOS_OAUTH_SIGNING_KEY   # >= 32 random bytes, keep it stable
+  allow:
+    domains: [example.com]                 # who may use the server at all
+
+tools:
+  - name: kubectl_delete_pod
+    allow:
+      groups: [ops]                        # and who may use this tool
+```
+
+**Identity provider setup** (register `<public_url>/auth/callback` as the redirect URI in all cases):
+
+| Provider | Setup |
+|---|---|
+| **Entra ID** | App registration in your tenant. `tenant_id` must be the tenant GUID. Under *Expose an API* add a scope named `mcp.access` (or set `oauth.scope`). Set `requestedAccessTokenVersion: 2` in the manifest. Use **app roles** for `groups:` rules (group claims are GUIDs and overflow above ~200), and add the `email` optional claim for email/domain rules. |
+| **Google** | OAuth client of type *Web application*. `auth.allow` is required (any Google account can sign in otherwise). `domains:` matches the Workspace domain (`hd`), never the email suffix, so `gmail.com` addresses don't count. |
+| **GitHub** | OAuth App. `auth.allow` is required. Match people by `subjects:` (their numeric user id): usernames can be released and claimed by someone else, and public emails are often missing. There are no org or team claims. |
+| **Okta / OIDC** | `config_url: https://<okta>/oauth2/default/.well-known/openid-configuration` (a custom authorization server), or Okta's org server with `verify_id_token: true`. For `groups:` rules, add a groups claim, requesting it with `extra_scopes: [groups]` if needed. |
+
+**Access rules.** `auth.allow` and `tools[].allow` take `emails`, `domains`, `groups` (the `groups` or `roles` claim) and `subjects` (`sub`, or Entra `oid`). Within a rule any match allows; a tool needs both the server rule and its own. A tool someone may not use is hidden from their tool list, and calling it reports *Unknown tool*. Only verified, stable claims count: unverified emails, display names and usernames are ignored. Rules apply over HTTP; a stdio server belongs to the local user. Group and role changes apply when the user's token refreshes.
+
+**Safe by default.** `serve` refuses to start without `public_url` (https, except for localhost), a resolvable `signing_key` and client secret, an Entra tenant GUID, or (for Google and GitHub) `auth.allow`. Clients may only redirect back to Claude, ChatGPT or loopback addresses; add others (e.g. Open WebUI's `https://<owui>/oauth/clients/mcp:*/callback`) with `oauth.redirect_uris`. Users approve each new client on a consent screen (`consent: remember` skips repeat prompts).
+
+**Sessions** are stored encrypted under `FASTMCP_HOME` (default: the user data dir); in Docker, mount a volume there. They survive restarts as long as `signing_key` stays the same.
+
+**Public HTTPS.** Claude and ChatGPT connect from their clouds, so the server must be reachable at exactly `<public_url>/mcp` (IPv4, no redirects):
+- **Cloudflare named tunnel** or **Tailscale Funnel** (`tailscale funnel 8765`): stable hostname, no open ports. Cloudflare cuts calls that take longer than 125 s.
+- **Caddy** on a host with ports 80/443: `tools.example.com { reverse_proxy 127.0.0.1:8765 }` with automatic TLS.
+- **ngrok** (`ngrok http 8765`): its free domain is stable.
+- **Cloudflare quick tunnels** change hostname on every run and don't stream: testing only, with `server.json_response: true`.
+
+**Audit log.** `server.audit_log` writes one JSON line per call: time, user, tool, arguments (secret args as `[REDACTED]`), ok, exit code, error and duration, including calls refused by access rules.
+
 ### Browser Access (CORS and Origin)
 
 Requests that carry an `Origin` header (i.e. from a browser) are rejected with 403 unless the origin is listed in `server.cors_origins`. This blocks DNS-rebinding and other websites calling a local server; non-browser MCP clients send no `Origin` and are not affected. `"*"` allows every origin and turns that check off, so it needs `api_key` auth: over HTTP with `auth.mode: none`, `serve` refuses to start.
@@ -516,8 +607,7 @@ server {
 
 - name: Run agent tasks
   run: |
-    claude --mcp http://localhost:8765/mcp \
-      "Analyse the git log and summarise what changed this week"
+    claude -p --mcp-config '{"mcpServers":{"teukhos":{"type":"http","url":"http://localhost:8765/mcp"}}}' "Analyse the git log and summarise what changed this week"
 
 - name: Teardown
   if: always()
@@ -744,41 +834,23 @@ teukhos install --client cursor --url http://localhost:8765/mcp
 
 ## Roadmap
 
-### v0.3 — Current
-- Multi-client installer: 15 MCP clients supported
-- Project-level and global-level installation scope
-- `teukhos install` with auto-detect, `--client`, `--all`, `--project`, `--url`
-- `teukhos install --dest` to write to any arbitrary JSON config file
-- `teukhos install --config-key` to choose `mcpServers` or `servers` JSON format
-- `teukhos uninstall` to remove registrations
-- `teukhos clients` to list supported clients
-- HTTP Streamable transport with startup banner
-- `env:` prefix API key resolution
-- CORS configuration for HTTP transport
-- Full authentication middleware (Bearer token)
-- Cross-platform example configs (Windows, Linux, macOS)
-- Ping health check tool on all example servers
-- Comprehensive integration test suite (62 tests across 20 servers)
-- `teukhos discover <binary>` — auto-generate config from `--help` with `--max-depth`, `--filter`, and `--timeout` options
+### v0.5 — Chat apps and teams
+- OAuth login through Entra ID, Google, GitHub and OIDC providers, for claude.ai, the Claude mobile apps and ChatGPT
+- Per-tool access rules and an audit log
+- `teukhos bundle`: one-click Claude Desktop extension; LM Studio and Antigravity installers
+- Tool annotations and titles, `isError` on failures, env-sourced secrets
+- All client installers re-checked against the clients' current formats
 
-### v0.4 — Production Ready
-- `rest` adapter (wrap any HTTP endpoint)
-- `shell` adapter (inline bash/pwsh scripts)
-- Hot reload — save YAML, tools update without restart
-- Streaming output support
-- Lock file (`teukhos.lock`) for reproducible deployments
+### v0.4 — Security hardening
+- Host-header auth bypass, fail-open auth and argument injection fixed; enum and secret enforced; Origin check; output cap; fastmcp 4
 
-### v0.5 — The Platform
-- OAuth 2.1 + JWT auth
-- mTLS support for enterprise deployments
-- Tool-level RBAC
-- Append-only audit log
-- Embedded web UI — dark glass, real-time tool call visualization
-- Bidirectional YAML to visual editor sync
-- OpenAPI auto-import adapter
-- Tool composition / mini pipelines
-- Prometheus metrics at `/metrics`
-- Public registry: `teukhos install registry://community/git-tools`
+### Next
+- Generate an Agent Skill (SKILL.md) from the same YAML, for coding agents with a shell
+- `teukhos discover` suggests read-only annotations
+- Hot reload: save the YAML, tools update without restart
+- `shell` adapter (inline scripts)
+
+Not planned: a web UI, a tool registry or metrics dashboards. Put Teukhos behind an MCP gateway (e.g. ToolHive, Docker MCP Gateway) when you need those.
 
 ---
 

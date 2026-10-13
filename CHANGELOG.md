@@ -8,6 +8,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [Unreleased]
 
 ### Added
+- **OAuth login (`auth.mode: oauth`)** through Microsoft Entra ID, Google, GitHub or any OIDC provider (Okta, Keycloak, Auth0, ...), so claude.ai, the Claude mobile apps and ChatGPT can use a Teukhos server over public HTTPS. Teukhos runs fastmcp's OAuth proxy; the identity provider needs one redirect URI, `<public_url>/auth/callback`, and Claude/ChatGPT register themselves (CIMD, or DCR as a fallback). New `server.public_url`. Fails closed: https only (except localhost), Entra tenant GUID, required `signing_key`, `auth.allow` required for Google and GitHub, client redirect URIs limited to Claude, ChatGPT and loopback unless `oauth.redirect_uris` adds more.
+- **Access rules:** `auth.allow` (whole server) and `tools[].allow` (per tool) match `emails`, `domains` (Google Workspace `hd`), `groups` (groups or roles claim) and `subjects` (stable ids). A tool someone may not use is hidden from their tool list; calling it reports "Unknown tool" and is audited. Only verified, immutable claims count.
+- **`teukhos bundle`:** builds a Claude Desktop extension (`.mcpb`) from a config, for a double-click install. Claude Desktop installs Teukhos from PyPI with its own `uv`; secret args with `default: env:VAR` become masked user settings.
+- **Secret defaults from the environment:** `secret: true` with `default: env:VAR` keeps a credential out of the YAML; it is read per call and redacted like a literal secret.
+- **LM Studio installer** (`--client lm-studio`).
+- `server.json_response: true` serves plain JSON instead of SSE, for proxies that cannot stream (Cloudflare quick tunnels).
+- README: "Use from Chat Apps" (Claude Desktop, LM Studio, Open WebUI, claude.ai, ChatGPT and its Secure MCP Tunnel) and "Remote Access with OAuth" (per-provider setup, rules, public HTTPS options).
 - **Audit log:** `server.audit_log: <path>` writes one JSON line per tool call: time, user (OAuth modes), tool, arguments (secret args shown as `[REDACTED]`), ok, exit code, error and duration. The path is checked at startup.
 - **Tool metadata:** `tools[].title` and `tools[].annotations` (`read_only`, `destructive`, `idempotent`, `open_world`) are published to clients, which use them for approval prompts and parallel calls. `examples/git-tools.yaml` marks its tools read-only.
 - `forge.version` and `forge.description` are sent as the server's version and instructions (they were ignored).
@@ -25,6 +32,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - **Trae** reads `<AppData>/Trae/User/mcp.json`, not `~/.trae/mcp.json`; **Continue** reads `~/.continue/mcpServers/`, not `~/.continue/mcp.json`; **Roo Code** reads `mcp_settings.json`.
 - **Augment** supports project scope (`.augment/settings.json`).
 - Claude Code detection no longer always reports the client as installed.
+- README CI recipe used a `claude --mcp` flag that does not exist; it now uses `--mcp-config`.
 
 ---
 

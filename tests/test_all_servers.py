@@ -151,10 +151,12 @@ class TestHTTPServers:
             yaml_path = EXAMPLES_DIR / f"{name}.yaml"
             if not yaml_path.exists():
                 continue
+            # DEVNULL, not PIPE: nothing reads these, and a server whose startup output
+            # fills the pipe buffer (~4 KB on Windows) blocks before it starts listening
             proc = subprocess.Popen(
                 [sys.executable, "-m", "teukhos.cli", "serve", str(yaml_path), "-t", "http", "-p", str(port)],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
                 cwd=str(Path(__file__).parent.parent),
             )
             processes.append((name, port, proc))

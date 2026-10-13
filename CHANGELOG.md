@@ -5,7 +5,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
-## [Unreleased]
+## [0.4.0] — 2026-10-13
 
 ### Security
 - **API-key auth bypass via the `Host` header.** A request with e.g. `Host: a?` reached `/mcp` without a key, because the middleware matched `request.url.path`, which Starlette rebuilds from `Host`. Auth now matches the routed path and denies by default; only `/health` is public.
@@ -43,6 +43,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Tool results are sent once as text instead of also as a duplicate `structuredContent`; `json_field` objects keep non-ASCII text unescaped.
 
 ### Changed
+- Requires `fastmcp>=4.0,<5`. fastmcp 4 serves both the MCP 2026-07-28 protocol and older clients; 3.x served only older clients, and `pip install -U teukhos` now moves existing installs off fastmcp 3.1.
 - Unknown config keys are rejected, so typos fail `teukhos validate`.
 - `AuthMiddleware(protected_paths=...)` is replaced by `public_paths` (default `["/health"]`); an empty key list denies all requests.
 - Codex entries no longer include a `type` key (Codex ignores it); `config.toml` is written with mode 0600, existing files included, like the JSON installers.
